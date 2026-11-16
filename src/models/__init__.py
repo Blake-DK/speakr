@@ -103,3 +103,7 @@ __all__ = [
     'WEBHOOK_DELIVERY_STATUSES',
     'generate_webhook_secret',
 ]
+
+# --- studio add-on (this fork only): its tables, for db.create_all() ---
+from src.studio import models as _studio_models  # noqa: E402,F401
+# --- end studio add-on ---

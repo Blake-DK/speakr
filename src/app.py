@@ -1208,6 +1208,11 @@ csrf.exempt(webhooks_bp)
 from src.api.recordings import share_target as _share_target_view
 csrf.exempt(_share_target_view)
 
+# --- studio add-on (this fork only; see src/studio/__init__.py) ---
+from src.studio import studio_bp
+app.register_blueprint(studio_bp)
+# --- end studio add-on ---
+
 # File monitor and scheduler initialization functions below
 
 # Startup functions (extracted to src/config/startup.py)

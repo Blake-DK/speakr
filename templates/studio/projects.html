@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    {#- Studio add-on page. The <head> follows group-admin.html, so the page
+        meets the same rules as upstream's pages (theme before the first
+        paint, compiled stylesheet last, then the UI theme). -#}
+    {% include 'includes/theme_account.html' %}
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+    <title>{{ page_title }} - Speakr</title>
+
+    <!-- Loading overlay to prevent FOUC - MUST be first -->
+    {% include 'includes/loading_overlay.html' %}
+
+    <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" type="image/svg+xml">
+    <script src="{{ url_for('static', filename='vendor/js/vue.global.js', v=app_version) }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/css/fontawesome.min.css', v=app_version) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v=app_version) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/primitives.css', v=app_version) }}">
+    {% include 'includes/i18n_bootstrap.html' %}
+    <script src="{{ url_for('static', filename='js/i18n.js', v=app_version) }}"></script>
+    <style>
+        [v-cloak] { display: none !important; }
+    </style>
+    <script>
+        // Light or dark mode and the colour scheme, before the first paint (as group-admin.html).
+        (function applyTheme() {
+            if (!document.documentElement) return;
+            const savedMode = localStorage.getItem('darkMode');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            document.documentElement.classList.toggle('dark', savedMode === 'true' || (savedMode === null && prefersDark));
+            const savedScheme = localStorage.getItem('colorScheme') || (window.speakrThemeDefaults || {}).colorScheme || 'blue';
+            const prefix = document.documentElement.classList.contains('dark') ? 'theme-dark-' : 'theme-light-';
+            ['blue', 'emerald', 'purple', 'rose', 'amber', 'teal'].forEach(scheme => {
+                document.documentElement.classList.remove(`theme-light-${scheme}`, `theme-dark-${scheme}`);
+            });
+            if (savedScheme !== 'blue') document.documentElement.classList.add(prefix + savedScheme);
+        })();
+    </script>
+    <script>
+        window.__STUDIO_I18N = {{ studio_strings|tojson }};
+        window.__STUDIO_PAGE = {
+            userLanguage: {{ user_language|tojson }},
+            sourceUrl: {{ studio_source_url|tojson }}
+        };
+    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css', v=app_version) }}">
+    {% include 'includes/ui_theme.html' %}
+</head>
+<body class="bg-[var(--bg-primary)] text-[var(--text-primary)]">
+    {% set page_label = page_title %}
+    {% include 'components/page-header.html' %}
+    <div id="app" v-cloak class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col min-h-screen">
+        <main class="flex-grow">
+            <div class="bg-[var(--bg-secondary)] p-4 sm:p-6 lg:p-8 rounded-xl shadow-lg border border-[var(--border-primary)]" data-studio-projects>
+                <h2 class="text-2xl font-semibold text-[var(--text-primary)] mb-6" v-text="st('studio.projects.title')"></h2>
+
+                <div class="text-center py-12" data-studio-empty>
+                    <i class="fas fa-film text-4xl text-[var(--text-muted)] mb-4" aria-hidden="true"></i>
+                    <p class="text-lg text-[var(--text-primary)]" v-text="st('studio.projects.empty')"></p>
+                    <p class="mt-2 text-sm text-[var(--text-muted)] max-w-xl mx-auto" v-text="st('studio.projects.emptyHint')"></p>
+                </div>
+            </div>
+        </main>
+
+        <footer class="mt-8 text-center text-xs text-[var(--text-muted)]" data-studio-source>
+            <p v-text="st('studio.projects.sourceCodeHint')"></p>
+            <a :href="sourceUrl" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center gap-1 mt-1 text-[var(--text-accent)] hover:underline">
+                <i class="fas fa-code" aria-hidden="true"></i>
+                <span v-text="st('studio.projects.sourceCode')"></span>
+            </a>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/studio/strings.js', v=app_version) }}"></script>
+    <script src="{{ url_for('static', filename='js/studio/projects.js', v=app_version) }}"></script>
+</body>
+</html>

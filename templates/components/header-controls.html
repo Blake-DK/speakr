@@ -99,6 +99,11 @@
             <a href="/account" class="block px-4 py-2 hover:bg-[var(--bg-tertiary)] transition-colors">
                 <i class="fas fa-cog mr-2 w-4 text-center"></i><span v-text="t('nav.settings')"></span>
             </a>
+            {#- studio add-on (this fork only; src/studio/) -#}
+            <a href="/studio" data-studio-nav class="block px-4 py-2 hover:bg-[var(--bg-tertiary)] transition-colors">
+                <i class="fas fa-film mr-2 w-4 text-center"></i><span>{{ studio_t('studio.nav.projects') }}</span>
+            </a>
+            {#- end studio add-on -#}
             <button @click="openSharesList" class="w-full text-left px-4 py-2 hover:bg-[var(--bg-tertiary)] transition-colors flex items-center">
                 <i class="fas fa-share-alt mr-2 w-4 text-center"></i><span v-text="t('modal.sharedTranscripts')"></span>
             </button>

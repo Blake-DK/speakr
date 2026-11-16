@@ -1,0 +1,14 @@
+{
+  "studio": {
+    "nav": {
+      "projects": "Projects"
+    },
+    "projects": {
+      "title": "Projects",
+      "empty": "No projects yet.",
+      "emptyHint": "Each film or production will get its own project here, with its recordings, materials and documents together.",
+      "sourceCode": "Source code",
+      "sourceCodeHint": "This site runs a modified version of Speakr. Its source code is published under the GNU AGPL v3."
+    }
+  }
+}
