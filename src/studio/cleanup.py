@@ -5,8 +5,11 @@ tables. SQLite, as Speakr runs it, does not enforce foreign keys, and it
 reuses the id of a deleted row for the next row of that table; a studio row
 left pointing at a deleted folder, group, recording or account would then
 point at someone else's new one. So the same clean-up also runs here, in the
-same transaction as Speakr's own delete, through SQLAlchemy's after_delete
+same transaction as Speakr's own delete, through SQLAlchemy's before_delete
 events on upstream's models (Speakr deletes these rows through the ORM).
+Before, not after: on PostgreSQL the ON DELETE clauses act within the DELETE
+statement itself, so after it the rows to clean up (and the material files
+of a deleted account) could no longer be found.
 
 - a folder: projects that used it lose it (the project shows "folder
   deleted" and makes a new one when needed);
@@ -83,5 +86,5 @@ def register():
     from src.models import Folder, Group, Recording, User
     for model, listener in ((Folder, folder_deleted), (Group, group_deleted), (Recording, recording_deleted),
                             (User, user_deleted)):
-        if not event.contains(model, 'after_delete', listener):
-            event.listen(model, 'after_delete', listener)
+        if not event.contains(model, 'before_delete', listener):
+            event.listen(model, 'before_delete', listener)
