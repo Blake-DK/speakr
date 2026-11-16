@@ -20,12 +20,13 @@ site running this code can get its source.
   there are more than seven. The Projects page uses the same order. When a
   person last opened each project is kept per person on the server
   (`studio_project_visit`), so every device shows the same order.
-- The bare address (`/`) opens the Projects page when a person arrives from
-  outside the app: right after signing in, from a typed address or a
-  bookmark, or from a link on another site. A link to `/` inside the app, a
-  reload, any other path and any query string still show Speakr's recordings
-  page; the Projects page links there too ("All recordings"). The rule is in
-  `src/studio/landing.py`.
+- Right after signing in, the bare address (`/`) opens the Projects page.
+  With `STUDIO_LANDING_FROM_OUTSIDE=true` it also does so for a typed address,
+  a bookmark or a link from another site (off by default: Speakr's own
+  browser tests open `/` that way and expect the recordings page). A link to
+  `/` inside the app, a reload, any other path and any query string still
+  show Speakr's recordings page; the Projects page links there too ("All
+  recordings"). The rule is in `src/studio/landing.py`.
 - `GET /api/studio/health`: `{"status": "ok"}`, for monitoring.
 - `whisper/`: a Whisper transcription service for Intel Arc (and NVIDIA) GPUs
   with an OpenAI-compatible route, which Speakr reaches through its `openasr`

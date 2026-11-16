@@ -5,8 +5,10 @@ The rule is in src/studio/landing.py. What these tests pin down:
 
 - right after signing in (the password form or the single sign-on callback),
   the bare address answers with the Projects page;
-- so does the bare address typed, opened from a bookmark, or reached from
-  another site (Fetch Metadata: Sec-Fetch-Site none, cross-site, same-site);
+- with STUDIO_LANDING_FROM_OUTSIDE=true, so does the bare address typed,
+  opened from a bookmark, or reached from another site (Fetch Metadata:
+  Sec-Fetch-Site none, cross-site, same-site); without it (the default) those
+  show the recordings page, as Speakr's own browser tests expect;
 - every other request is left alone: a link inside the app, a reload, any
   query or path, a `next=` after signing in, a request that is not a page
   navigation, a browser that sends no Fetch Metadata, a signed-out visitor;
@@ -45,6 +47,17 @@ def _lands_on_projects(response):
 
 
 @pytest.fixture
+def from_outside_on(monkeypatch):
+    monkeypatch.setenv(landing.FROM_OUTSIDE_SETTING, 'true')
+
+
+@pytest.fixture(autouse=True)
+def from_outside_unset(monkeypatch):
+    # Every test starts from the default, whatever the environment says.
+    monkeypatch.delenv(landing.FROM_OUTSIDE_SETTING, raising=False)
+
+
+@pytest.fixture
 def password_user(world):
     suffix = uuid.uuid4().hex[:8]
     user = User(username=f'land_{suffix}', email=f'land_{suffix}@example.com',
@@ -65,14 +78,26 @@ def _sign_in(client, user, next_url=None):
 # --- the bare address from outside the app ----------------------------------
 
 @pytest.mark.parametrize('headers', [TYPED, FROM_OTHER_SITE, FROM_SAME_SITE], ids=['typed', 'cross-site', 'same-site'])
-def test_the_bare_address_from_outside_lands_on_the_projects_page(world, headers):
+def test_by_default_the_bare_address_from_outside_shows_the_recordings_page(world, headers):
+    client = world.client(world.user())
+    assert client.get('/', headers=headers).status_code == 200
+
+
+@pytest.mark.parametrize('value', ['', 'false', '0', 'no'])
+def test_only_a_true_value_switches_the_second_rule_on(world, monkeypatch, value):
+    monkeypatch.setenv(landing.FROM_OUTSIDE_SETTING, value)
+    assert world.client(world.user()).get('/', headers=TYPED).status_code == 200
+
+
+@pytest.mark.parametrize('headers', [TYPED, FROM_OTHER_SITE, FROM_SAME_SITE], ids=['typed', 'cross-site', 'same-site'])
+def test_switched_on_the_bare_address_from_outside_lands_on_the_projects_page(world, from_outside_on, headers):
     client = world.client(world.user())
     response = client.get('/', headers=headers)
     assert _lands_on_projects(response)
     assert 'no-store' in response.headers.get('Cache-Control', '')
 
 
-def test_the_projects_page_itself_is_never_redirected(world):
+def test_the_projects_page_itself_is_never_redirected(world, from_outside_on):
     client = world.client(world.user())
     for headers in (TYPED, FROM_OTHER_SITE, IN_APP):
         assert client.get('/studio', headers=headers).status_code == 200
@@ -81,32 +106,32 @@ def test_the_projects_page_itself_is_never_redirected(world):
 @pytest.mark.parametrize('headers', [IN_APP, RELOAD, HARD_RELOAD, FETCH, IFRAME, OLD_BROWSER_PAGE, {}],
                          ids=['in-app link', 'reload', 'hard reload', 'fetch', 'iframe', 'no fetch metadata',
                               'no headers'])
-def test_everything_else_at_the_bare_address_shows_the_recordings_page(world, headers):
+def test_everything_else_at_the_bare_address_shows_the_recordings_page(world, from_outside_on, headers):
     client = world.client(world.user())
     response = client.get('/', headers=headers)
     assert response.status_code == 200, (response.status_code, response.headers.get('Location'))
 
 
 @pytest.mark.parametrize('path', ['/?q=interview', '/?view=list', '/recordings/1', '/label/interviews', '/account'])
-def test_a_specific_address_goes_where_it_points(world, path):
+def test_a_specific_address_goes_where_it_points(world, from_outside_on, path):
     client = world.client(world.user())
     response = client.get(path, headers=TYPED)
     assert not _lands_on_projects(response), (path, response.headers.get('Location'))
 
 
-def test_a_head_request_is_left_alone(world):
+def test_a_head_request_is_left_alone(world, from_outside_on):
     client = world.client(world.user())
     assert not _lands_on_projects(client.head('/', headers=TYPED))
 
 
-def test_a_signed_out_visitor_is_sent_to_sign_in_as_before(world):
+def test_a_signed_out_visitor_is_sent_to_sign_in_as_before(world, from_outside_on):
     response = world.client().get('/', headers=TYPED)
     assert response.status_code == 302
     location = response.headers['Location']
     assert '/login' in location and '/studio' not in location
 
 
-def test_no_loop_from_the_bare_address_to_the_recordings_page(world):
+def test_no_loop_from_the_bare_address_to_the_recordings_page(world, from_outside_on):
     client = world.client(world.user())
     first = client.get('/', headers=TYPED)
     assert _lands_on_projects(first)

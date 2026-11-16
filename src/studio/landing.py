@@ -1,15 +1,18 @@
 """Where a signed-in person lands: the Projects page, when they arrive at the
 bare address from outside the app.
 
-"From outside the app" means one of:
+"From outside the app" means:
 
 - the first page right after signing in (the password form or the single
   sign-on callback), noted in the session by Flask-Login's ``user_logged_in``
-  signal and used once, within a short time;
-- a page navigation the browser marks as not started by this site
-  (Fetch Metadata ``Sec-Fetch-Site``: ``none`` for a typed address, a
-  bookmark or the installed app's start address; ``cross-site`` or
-  ``same-site`` for a link from another site), that is not a reload.
+  signal and used once, within a short time. Always on.
+- only with ``STUDIO_LANDING_FROM_OUTSIDE=true``: also a page navigation the
+  browser marks as not started by this site (Fetch Metadata
+  ``Sec-Fetch-Site``: ``none`` for a typed address, a bookmark or the
+  installed app's start address; ``cross-site`` or ``same-site`` for a link
+  from another site), that is not a reload. Off by default: a browser cannot
+  tell a person's bookmark from a script opening the address, and Speakr's
+  own browser tests open ``/`` that way and expect the recordings page.
 
 Everything else is left to Speakr, so its recordings page shows as before:
 a link or redirect inside the app (``same-origin``), a reload, any path other
@@ -25,6 +28,7 @@ Nothing here edits an upstream file: a request hook and a signal handler,
 both registered by the studio blueprint.
 """
 
+import os
 import time
 
 from flask import redirect, request, session, url_for
@@ -43,6 +47,14 @@ SIGN_IN_ENDPOINTS = ('auth.login', 'auth.sso_callback')
 
 # Sec-Fetch-Site values of a navigation that did not start on this site.
 _FROM_OUTSIDE = frozenset({'none', 'cross-site', 'same-site'})
+
+# The switch for the second rule (a typed address, a bookmark, a link from
+# another site). Read on every request, so a test or a restart changes it.
+FROM_OUTSIDE_SETTING = 'STUDIO_LANDING_FROM_OUTSIDE'
+
+
+def from_outside_enabled():
+    return os.environ.get(FROM_OUTSIDE_SETTING, '').strip().lower() in ('1', 'true', 'yes', 'on')
 
 
 def _note_sign_in(sender, user=None, **extra):
@@ -93,6 +105,8 @@ def landing_redirect():
     if not current_user.is_authenticated:
         return None
     if not just_signed_in:
+        if not from_outside_enabled():
+            return None
         if request.headers.get('Sec-Fetch-Site') not in _FROM_OUTSIDE or _is_reload():
             return None
     response = redirect(url_for('studio.projects_page'))
