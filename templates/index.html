@@ -249,5 +249,6 @@
 
     <!-- Vue.js Application Script -->
     <script type="module" src="{{ url_for('static', filename='js/app.modular.js', v=app_version) }}"></script>
+    {% include 'studio/main_page.html' %}{#- studio add-on (this fork only; src/studio/): its scripts on the main page -#}
 </body>
 </html>

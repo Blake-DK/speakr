@@ -156,6 +156,21 @@
       "close": "Close",
       "loadFailed": "Your projects could not be loaded."
     },
+    "shareHelp": {
+      "title": "What to share",
+      "intro": "Your browser will now ask what to share. To record sound:",
+      "systemApp": "Sound from a call or an app on this computer: choose Entire Screen and switch on Share system audio.",
+      "systemTab": "Sound from a browser tab: choose that tab and keep its audio switch on.",
+      "tabOnly": "Choose the browser tab that plays the sound and keep its audio switch on.",
+      "tabOnlyNote": "On this computer the browser cannot record sound from other apps.",
+      "none": "This browser cannot record sound from a shared screen or tab. Use Chrome or Edge, or record from the microphone.",
+      "noSwitch": "Without the audio switch, no sound is recorded.",
+      "video": "If Also record video is ticked, what you share is saved as video too.",
+      "guide": "If no sound comes through, Speakr opens its full guide.",
+      "dontShow": "Don't show this again",
+      "continue": "Continue",
+      "cancel": "Cancel"
+    },
     "errors": {
       "notFound": "That project does not exist, or you cannot see it.",
       "ownerOnly": "Only the project's owner can do that.",

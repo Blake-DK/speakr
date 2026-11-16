@@ -9,6 +9,8 @@ The upstream files it does touch, each in one marked block:
 - src/models/__init__.py: imports ``src.studio.models`` so ``db.create_all()``
   creates the add-on's tables.
 - templates/components/header-controls.html: the Projects button in the top bar.
+- templates/index.html: one line that includes templates/studio/main_page.html,
+  the studio's scripts on Speakr's main page.
 """
 
 from src.studio.routes import studio_bp

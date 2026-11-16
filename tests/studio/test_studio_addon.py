@@ -89,6 +89,30 @@ def test_the_header_bar_links_to_the_projects_page(user):
     assert 'aria-current' not in button
 
 
+def test_the_main_page_loads_the_studio_script_after_upstreams(user):
+    page = _client(user).get('/').get_data(as_text=True)
+    hook = page.index('js/studio/main-page.js')
+    assert page.count('data-studio-main-page') == 1
+    # After the app's own script and outside the Vue root, so it runs; before </body>.
+    assert page.index('js/app.modular.js') < hook < page.index('</body>')
+    assert '<script type="module" src="/static/js/studio/main-page.js?v=' in page
+    # Only the strings the dialog needs, not all the studio's.
+    strings = json.loads(page.split('window.__STUDIO_I18N = ', 1)[1].split(';\n', 1)[0])
+    assert set(strings['studio']) == {'shareHelp'}
+    assert strings['studio']['shareHelp']['title'] == 'What to share'
+
+
+def test_the_main_page_hook_is_one_marked_line():
+    with open(os.path.join(ROOT, 'templates', 'index.html'), encoding='utf-8') as fh:
+        lines = [line for line in fh if 'studio' in line]
+    assert len(lines) == 1
+    assert "{% include 'studio/main_page.html' %}" in lines[0] and 'studio add-on (this fork only' in lines[0]
+
+
+def test_the_studio_pages_do_not_load_the_main_page_script(user):
+    assert 'js/studio/main-page.js' not in _client(user).get('/studio').get_data(as_text=True)
+
+
 @pytest.mark.parametrize('path', ['/account', '/studio'])
 def test_every_page_header_has_the_projects_button(user, path):
     button = _projects_button(_client(user).get(path).get_data(as_text=True))

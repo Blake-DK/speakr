@@ -106,3 +106,9 @@ def studio_strings(language=None):
     if language != FALLBACK_LOCALE:
         strings = _merge(strings, _load(language))
     return strings
+
+
+def studio_strings_for(*sections, language=None):
+    """Only the named sections of the studio strings, for an upstream page that needs a few of them."""
+    table = studio_strings(language).get('studio', {})
+    return {'studio': {name: table[name] for name in sections if name in table}}

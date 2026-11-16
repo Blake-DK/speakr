@@ -13,7 +13,7 @@ from flask_login import current_user, login_required
 
 from src.database import db
 from src.studio import access, landing, materials, projects, sharing, voice
-from src.studio.i18n import studio_message, studio_strings, studio_t, user_language
+from src.studio.i18n import studio_message, studio_strings, studio_strings_for, studio_t, user_language
 
 studio_bp = Blueprint('studio', __name__)
 
@@ -50,8 +50,9 @@ landing.register(studio_bp)
 
 @studio_bp.app_context_processor
 def inject_studio_helpers():
-    """``studio_t`` for every template, so shared parts such as the header can label studio links."""
-    return {'studio_t': studio_t}
+    """``studio_t`` for every template, so shared parts such as the header can label studio links;
+    ``studio_strings_for`` for templates/studio/main_page.html on Speakr's main page."""
+    return {'studio_t': studio_t, 'studio_strings_for': studio_strings_for}
 
 
 def _error(key, status, **params):

@@ -27,6 +27,16 @@ site running this code can get its source.
   `/` inside the app, a reload, any other path and any query string still
   show Speakr's recordings page; the Projects page links there too ("All
   recordings"). The rule is in `src/studio/landing.py`.
+- "What to share": on Speakr's recorder, "System audio" and "Microphone +
+  system" first show a short dialog that says what to pick in the browser's
+  share dialog on this computer and browser (Entire Screen with "Share system
+  audio", or a tab with its audio switch on), then the browser asks. Continue,
+  Cancel (reported as a cancelled share) and "Don't show this again" (kept in
+  the browser). It wraps `navigator.mediaDevices.getDisplayMedia` from
+  `static/js/studio/main-page.js` and uses Speakr's own capability check
+  (`static/js/modules/utils/platform.js`); the logic is in
+  `static/js/studio/share-help.js`, tested by `share-help.test.js` with
+  Speakr's Vitest suite.
 - `GET /api/studio/health`: `{"status": "ok"}`, for monitoring.
 - `whisper/`: a Whisper transcription service for Intel Arc (and NVIDIA) GPUs
   with an OpenAI-compatible route, which Speakr reaches through its `openasr`
@@ -73,7 +83,11 @@ Upstream files the add-on touches, each in one marked block:
 
 - `src/app.py`: registers the studio blueprint;
 - `src/models/__init__.py`: imports `src.studio.models`;
-- `templates/components/header-controls.html`: the Projects button.
+- `templates/components/header-controls.html`: the Projects button;
+- `templates/index.html` (Speakr's main page): one line at the end of the
+  body that includes `templates/studio/main_page.html`, the studio's scripts
+  on that page. Upstream offers no hook for a script there: its theme slots
+  are inside the Vue app, where a script tag does not run.
 
 Rules:
 

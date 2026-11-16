@@ -1,0 +1,11 @@
+{#- Studio add-on: what it adds to Speakr's main page (templates/index.html includes this
+    file with one marked line, at the end of the body, outside the Vue app, so the
+    scripts here run).
+
+    - static/js/studio/main-page.js: the "what to share" dialog before the browser's
+      screen-share picker (static/js/studio/share-help.js). -#}
+<script>
+    window.__STUDIO_I18N = {{ studio_strings_for('shareHelp')|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/studio/strings.js', v=app_version) }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/studio/main-page.js', v=app_version) }}" data-studio-main-page></script>
