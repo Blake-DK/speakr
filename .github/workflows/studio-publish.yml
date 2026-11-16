@@ -72,6 +72,14 @@ jobs:
         if: always()
         run: docker logs studio-smoke 2>&1 | tail -n 200 || true
 
+      # Upstream's test workflow runs tests/studio without the add-on's own
+      # packages (requirements-studio.txt), so the slide deck tests skip there.
+      # Here they run inside the image, where python-pptx is installed.
+      - name: Studio tests inside the image
+        run: |
+          docker run --rm -v "$PWD":/repo -w /repo -e PYTHONDONTWRITEBYTECODE=1 --entrypoint sh speakr-studio:ci -c \
+            'pip install -q --disable-pip-version-check pytest==9.2.0 && python -c "import pptx" && python -m pytest tests/studio -q -p no:cacheprovider -rs'
+
       - name: Log in to GHCR
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
