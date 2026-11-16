@@ -8,7 +8,7 @@ The upstream files it does touch, each in one marked block:
 - src/app.py: registers ``studio_bp``.
 - src/models/__init__.py: imports ``src.studio.models`` so ``db.create_all()``
   creates the add-on's tables.
-- templates/components/header-controls.html: the link to the Projects page.
+- templates/components/header-controls.html: the Projects button in the top bar.
 """
 
 from src.studio.routes import studio_bp

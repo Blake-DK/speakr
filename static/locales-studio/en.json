@@ -37,7 +37,8 @@
       "sharedWithYou": "Shared with you",
       "counts": "{{recordings}} recordings · {{materials}} materials",
       "sourceCode": "Source code",
-      "sourceCodeHint": "This site runs a modified version of Speakr. Its source code is published under the GNU AGPL v3."
+      "sourceCodeHint": "This site runs a modified version of Speakr. Its source code is published under the GNU AGPL v3.",
+      "allRecordings": "All recordings"
     },
     "project": {
       "back": "Projects",
@@ -143,6 +144,17 @@
         "removeConfirm": "Their recordings in this project leave it, and they no longer see the project or its recordings.",
         "private": "Only you see this project."
       }
+    },
+    "switcher": {
+      "button": "Switch project",
+      "title": "Your projects",
+      "filter": "Find a project",
+      "noMatch": "No project matches.",
+      "allProjects": "All projects",
+      "newProject": "New project",
+      "current": "Open now",
+      "close": "Close",
+      "loadFailed": "Your projects could not be loaded."
     },
     "errors": {
       "notFound": "That project does not exist, or you cannot see it.",

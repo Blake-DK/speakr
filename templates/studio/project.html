@@ -80,7 +80,74 @@
             <div v-else-if="project" class="bg-[var(--bg-secondary)] rounded-xl shadow-lg border border-[var(--border-primary)]">
                 <header class="p-4 sm:p-6 border-b border-[var(--border-primary)]">
                     <div class="flex flex-wrap items-start justify-between gap-2">
-                        <h2 class="text-2xl font-semibold text-[var(--text-primary)] break-words min-w-0" data-studio-project-name v-text="project.name"></h2>
+                        <!-- The project switcher (static/js/studio/switcher.js): the name opens the
+                             person's projects, the most recently opened first. -->
+                        <div class="relative min-w-0" data-studio-switcher @keydown="switcher.onKeydown">
+                            <h2 class="text-2xl font-semibold text-[var(--text-primary)] min-w-0">
+                                <button type="button" data-studio-switcher-button
+                                        class="inline-flex items-center gap-2 max-w-full text-left rounded-md px-1 -mx-1 hover:bg-[var(--bg-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-focus)]"
+                                        aria-haspopup="listbox" aria-controls="studio-switcher-panel"
+                                        :aria-expanded="switcher.open ? 'true' : 'false'"
+                                        :title="st('studio.switcher.button')"
+                                        @click="switcher.toggle">
+                                    <span class="break-words min-w-0" data-studio-project-name v-text="project.name"></span>
+                                    <i class="fas fa-chevron-down text-base text-[var(--text-muted)] shrink-0 transition-transform"
+                                       :class="switcher.open ? 'rotate-180' : ''" aria-hidden="true"></i>
+                                    <span class="sr-only" v-text="st('studio.switcher.button')"></span>
+                                </button>
+                            </h2>
+                            <template v-if="switcher.open">
+                                <div class="fixed inset-0 z-[60] bg-black/40 sm:bg-transparent" data-studio-switcher-backdrop
+                                     @click="switcher.close(true)"></div>
+                                <div id="studio-switcher-panel" data-studio-switcher-panel
+                                     class="surface-raised fixed inset-x-0 bottom-0 z-[61] flex flex-col max-h-[80vh] rounded-t-xl rounded-b-none text-base font-normal sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-2 sm:w-80 sm:max-h-[60vh] sm:rounded-lg">
+                                    <div class="flex items-center justify-between gap-2 px-4 pt-3 pb-2 sm:hidden">
+                                        <span class="section-label" v-text="st('studio.switcher.title')"></span>
+                                        <button type="button" class="btn btn--sm btn--ghost" @click="switcher.close(true)"
+                                                :aria-label="st('studio.switcher.close')">
+                                            <i class="fas fa-xmark" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                    <div v-if="switcher.showFilter" class="px-3 pt-1 pb-2 sm:pt-3 border-b border-[var(--border-primary)]">
+                                        <input v-model="switcher.query" type="search" autocomplete="off" class="field w-full" data-studio-switcher-filter
+                                               role="combobox" aria-autocomplete="list" aria-expanded="true"
+                                               aria-controls="studio-switcher-list" :aria-activedescendant="switcher.optionId(switcher.active)"
+                                               :aria-label="st('studio.switcher.filter')" :placeholder="st('studio.switcher.filter')">
+                                    </div>
+                                    <ul id="studio-switcher-list" role="listbox" tabindex="-1" data-studio-switcher-list
+                                        class="overflow-y-auto py-1 focus:outline-none pb-[max(0.25rem,env(safe-area-inset-bottom))]"
+                                        :aria-label="st('studio.switcher.title')"
+                                        :aria-activedescendant="switcher.showFilter ? null : switcher.optionId(switcher.active)">
+                                        <li v-if="switcher.loading && !switcher.loaded" role="presentation" class="px-4 py-2 text-sm text-[var(--text-muted)]">
+                                            <i class="fas fa-spinner fa-spin mr-2" aria-hidden="true"></i><span v-text="st('studio.common.loading')"></span>
+                                        </li>
+                                        <li v-else-if="switcher.failed" role="presentation" class="px-4 py-2 text-sm text-[var(--text-danger)]"
+                                            v-text="st('studio.switcher.loadFailed')"></li>
+                                        <li v-else-if="switcher.query.trim() && !switcher.matches.length" role="presentation"
+                                            class="px-4 py-2 text-sm text-[var(--text-muted)]" v-text="st('studio.switcher.noMatch')"></li>
+                                        <li v-for="(entry, index) in switcher.entries" :key="entry.key" role="presentation"
+                                            :class="index === switcher.firstFooter ? 'mt-1 pt-1 border-t border-[var(--border-primary)]' : ''">
+                                            <a :id="switcher.optionId(index)" :href="entry.href" role="option" tabindex="-1"
+                                               :aria-selected="index === switcher.active ? 'true' : 'false'"
+                                               :aria-current="entry.current ? 'page' : null"
+                                               :data-studio-switcher-entry="entry.kind"
+                                               class="flex items-center gap-3 px-4 py-3 sm:py-2 text-[var(--text-primary)] no-underline"
+                                               :class="index === switcher.active ? 'bg-[var(--bg-tertiary)]' : ''"
+                                               @mousemove="switcher.active = index"
+                                               @click="switcher.onEntryClick($event, entry)">
+                                                <i :class="switcher.entryIcon(entry)" class="w-4 text-center shrink-0"
+                                                   :style="entry.current ? 'color: var(--text-accent)' : 'color: var(--text-muted)'" aria-hidden="true"></i>
+                                                <span class="min-w-0 flex-1">
+                                                    <span class="block truncate" :class="entry.current ? 'font-semibold' : ''" v-text="switcher.entryLabel(entry)"></span>
+                                                    <span v-if="switcher.entryNote(entry)" class="block text-xs text-[var(--text-muted)] truncate"
+                                                          v-text="switcher.entryNote(entry)"></span>
+                                                </span>
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </template>
+                        </div>
                         <span class="chip shrink-0" v-text="st('studio.project.roles.' + project.role)"></span>
                     </div>
                     <p v-if="project.logline" class="mt-2 text-[var(--text-secondary)] studio-text" v-text="project.logline"></p>
@@ -397,6 +464,7 @@
 
     <script src="{{ url_for('static', filename='js/studio/strings.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='js/studio/api.js', v=app_version) }}"></script>
+    <script src="{{ url_for('static', filename='js/studio/switcher.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='js/studio/project.js', v=app_version) }}"></script>
 </body>
 </html>

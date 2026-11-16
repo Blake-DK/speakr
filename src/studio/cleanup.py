@@ -17,7 +17,8 @@ of a deleted account) could no longer be found.
   are emptied;
 - a recording: voice references made from it go;
 - an account: the projects it owned go, with their materials (rows and
-  files) and voice references; its places on other projects' People lists go.
+  files) and voice references; its places on other projects' People lists go,
+  and so does its record of the projects it opened.
 """
 
 import logging
@@ -33,6 +34,11 @@ def _tables():
             StudioVoiceReference.__table__)
 
 
+def _visits():
+    from src.studio.models import StudioProjectVisit
+    return StudioProjectVisit.__table__
+
+
 def _drop_projects(connection, project_ids):
     """Delete these projects and their rows; returns the storage locators of their materials."""
     projects, members, materials, voices = _tables()
@@ -40,7 +46,7 @@ def _drop_projects(connection, project_ids):
         return []
     locators = [row[0] for row in connection.execute(
         select(materials.c.storage_locator).where(materials.c.project_id.in_(project_ids)))]
-    for table in (materials, voices, members):
+    for table in (materials, voices, members, _visits()):
         connection.execute(table.delete().where(table.c.project_id.in_(project_ids)))
     connection.execute(projects.delete().where(projects.c.id.in_(project_ids)))
     return locators
@@ -67,6 +73,8 @@ def recording_deleted(mapper, connection, target):
 def user_deleted(mapper, connection, target):
     projects, members, materials, voices = _tables()
     connection.execute(members.delete().where(members.c.user_id == target.id))
+    visits = _visits()
+    connection.execute(visits.delete().where(visits.c.user_id == target.id))
     connection.execute(materials.update().where(materials.c.uploaded_by == target.id).values(uploaded_by=None))
     connection.execute(voices.update().where(voices.c.created_by == target.id).values(created_by=None))
     owned = [row[0] for row in connection.execute(select(projects.c.id).where(projects.c.owner_id == target.id))]

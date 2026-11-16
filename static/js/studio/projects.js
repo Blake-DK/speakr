@@ -1,6 +1,7 @@
 /**
  * The Projects page of the studio add-on (templates/studio/projects.html):
- * the projects the person may see, and a new project.
+ * the projects the person may see, the most recently opened first (the
+ * order of the project switcher), and a new project.
  */
 (function () {
     'use strict';
@@ -77,7 +78,17 @@
 
                 const hasProjects = computed(() => projects.value.length > 0);
 
-                onMounted(load);
+                onMounted(() => {
+                    load();
+                    // "New project" in a project's switcher links here with ?new=1.
+                    const params = new URLSearchParams(window.location.search);
+                    if (params.has('new')) {
+                        openForm();
+                        try {
+                            window.history.replaceState({}, '', window.location.pathname);
+                        } catch (err) { /* best effort */ }
+                    }
+                });
 
                 return {
                     st, loading, loadError, projects, hasProjects, showForm, form, formError, creating,

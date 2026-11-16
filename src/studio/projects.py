@@ -4,10 +4,15 @@ The routes in src/studio/routes.py stay thin and call these functions; every
 check of who may do what is in src/studio/access.py.
 """
 
+import logging
 from datetime import datetime
+
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from src.database import db
 from src.studio import access, sharing
+
+logger = logging.getLogger(__name__)
 
 MAX_NAME_LENGTH = 200
 MAX_TEXT_LENGTH = 20_000
@@ -94,7 +99,73 @@ def _owner_name(project):
     return owner.username if owner else None
 
 
-def summary(project, user):
+def _iso(value):
+    return value.isoformat() + 'Z' if value else None
+
+
+# --- recently opened --------------------------------------------------------
+
+def record_visit(project, user):
+    """Note that the user opened the project's page now. Commits; never fails the page."""
+    from src.studio.models import StudioProjectVisit
+    now = datetime.utcnow()
+    try:
+        changed = StudioProjectVisit.query.filter_by(user_id=user.id, project_id=project.id).update(
+            {'opened_at': now}, synchronize_session=False)
+        if not changed:
+            db.session.add(StudioProjectVisit(user_id=user.id, project_id=project.id, opened_at=now))
+        db.session.commit()
+    except IntegrityError:
+        # Another request of the same person made the row first (two tabs).
+        db.session.rollback()
+        try:
+            StudioProjectVisit.query.filter_by(user_id=user.id, project_id=project.id).update(
+                {'opened_at': now}, synchronize_session=False)
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            logger.warning("A studio project visit could not be recorded")
+    except SQLAlchemyError:
+        db.session.rollback()
+        logger.warning("A studio project visit could not be recorded")
+
+
+def opened_times(user):
+    """{project id: when the user last opened it}."""
+    from src.studio.models import StudioProjectVisit
+    rows = db.session.query(StudioProjectVisit.project_id, StudioProjectVisit.opened_at).filter(
+        StudioProjectVisit.user_id == user.id)
+    return {project_id: opened_at for project_id, opened_at in rows}
+
+
+def ordered_for(user):
+    """[(project, opened_at)]: the projects the user may see, the most recently opened first.
+
+    Projects the user never opened follow, newest first. The project switcher
+    and the Projects list use this one order.
+    """
+    opened = opened_times(user)
+    visible = access.visible_projects(user)  # newest first
+    seen = sorted((p for p in visible if p.id in opened), key=lambda p: (opened[p.id], p.id), reverse=True)
+    unseen = [p for p in visible if p.id not in opened]
+    return [(p, opened.get(p.id)) for p in seen + unseen]
+
+
+def switcher_item(project, user, opened_at):
+    """A project as the project switcher shows it: the name and who it belongs to, nothing heavier."""
+    role = access.role_of(project, user)
+    return {
+        'id': project.id,
+        'name': project.name,
+        'role': role,
+        'shared': bool(access.member_ids(project)),
+        'owner_name': _owner_name(project) if role != access.OWNER else None,
+        'opened_at': _iso(opened_at),
+        'url': f'/studio/projects/{project.id}',
+    }
+
+
+def summary(project, user, opened_at=None):
     """A project as the Projects list shows it."""
     from src.studio.models import StudioMaterial
     role = access.role_of(project, user)
@@ -108,7 +179,8 @@ def summary(project, user):
         'shared': bool(access.member_ids(project)),
         'material_count': StudioMaterial.query.filter_by(project_id=project.id).count(),
         'recording_count': len(visible_recordings(project, user)),
-        'created_at': project.created_at.isoformat() + 'Z' if project.created_at else None,
+        'created_at': _iso(project.created_at),
+        'opened_at': _iso(opened_at),
     }
 
 

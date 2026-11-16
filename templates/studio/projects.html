@@ -57,10 +57,19 @@
             <div class="bg-[var(--bg-secondary)] p-4 sm:p-6 lg:p-8 rounded-xl shadow-lg border border-[var(--border-primary)]" data-studio-projects>
                 <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
                     <h2 class="text-2xl font-semibold text-[var(--text-primary)]" v-text="st('studio.projects.title')"></h2>
-                    <button v-if="!showForm" type="button" class="btn btn--primary" data-studio-new-project @click="openForm">
-                        <i class="fas fa-plus" aria-hidden="true"></i>
-                        <span v-text="st('studio.projects.newProject')"></span>
-                    </button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        {#- The way back to Speakr's recordings page: since the bare address
+                            opens this page when it is reached from outside the app
+                            (src/studio/landing.py), it gets its own link here. -#}
+                        <a href="{{ url_for('recordings.index') }}" class="btn btn--ghost" data-studio-all-recordings>
+                            <i class="fas fa-list" aria-hidden="true"></i>
+                            <span v-text="st('studio.projects.allRecordings')"></span>
+                        </a>
+                        <button v-if="!showForm" type="button" class="btn btn--primary" data-studio-new-project @click="openForm">
+                            <i class="fas fa-plus" aria-hidden="true"></i>
+                            <span v-text="st('studio.projects.newProject')"></span>
+                        </button>
+                    </div>
                 </div>
 
                 <form v-if="showForm" class="mb-8 p-4 rounded-lg border border-[var(--border-primary)] bg-[var(--bg-tertiary)]"

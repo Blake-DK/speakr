@@ -12,7 +12,7 @@ from flask import Blueprint, abort, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from src.database import db
-from src.studio import access, materials, projects, sharing, voice
+from src.studio import access, landing, materials, projects, sharing, voice
 from src.studio.i18n import studio_message, studio_strings, studio_t, user_language
 
 studio_bp = Blueprint('studio', __name__)
@@ -42,6 +42,10 @@ def _apply_schema_steps(state):
 
 
 studio_bp.record_once(_apply_schema_steps)
+
+# The bare address reached from outside the app opens the Projects page
+# (src/studio/landing.py).
+landing.register(studio_bp)
 
 
 @studio_bp.app_context_processor
@@ -84,6 +88,7 @@ def project_page(project_id):
     project, _role = access.project_for(project_id, current_user)
     if project is None:
         abort(404)
+    projects.record_visit(project, current_user)
     return _page('studio/project.html', project.name, studio_project_id=project.id)
 
 
@@ -98,7 +103,17 @@ def health():
 @studio_bp.route('/api/studio/projects', methods=['GET'])
 @login_required
 def list_projects():
-    return jsonify({'projects': [projects.summary(p, current_user) for p in access.visible_projects(current_user)]})
+    """The projects the person may see, the most recently opened first."""
+    return jsonify({'projects': [projects.summary(p, current_user, opened_at)
+                                 for p, opened_at in projects.ordered_for(current_user)]})
+
+
+@studio_bp.route('/api/studio/switcher', methods=['GET'])
+@login_required
+def project_switcher():
+    """The project switcher's list: the same projects in the same order, without the counts."""
+    return jsonify({'projects': [projects.switcher_item(p, current_user, opened_at)
+                                 for p, opened_at in projects.ordered_for(current_user)]})
 
 
 @studio_bp.route('/api/studio/projects', methods=['POST'])

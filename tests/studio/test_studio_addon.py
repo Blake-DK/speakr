@@ -71,10 +71,28 @@ def test_the_source_link_can_point_elsewhere(user, monkeypatch):
     assert '"https://example.com/source.git"' in page
 
 
-def test_the_user_menu_links_to_the_projects_page(user):
+def _projects_button(page):
+    import re
+    found = re.findall(r'<a href="/studio" data-studio-nav[^>]*>.*?</a>', page, flags=re.S)
+    assert len(found) == 1, found
+    return found[0]
+
+
+def test_the_header_bar_links_to_the_projects_page(user):
     page = _client(user).get('/').get_data(as_text=True)
-    assert 'href="/studio" data-studio-nav' in page
-    assert '<span>Projects</span>' in page
+    button = _projects_button(page)
+    # In the bar beside New Recording, not in the user menu.
+    assert page.index('data-studio-nav') < page.index('switchToUploadView') < page.index('data-user-menu-dropdown')
+    assert 'header-action' in button and 'aria-label="Projects"' in button
+    # The label from 640px, the film icon alone below, as New Recording does.
+    assert '<span class="header-action__label hidden sm:inline">Projects</span>' in button
+    assert 'aria-current' not in button
+
+
+@pytest.mark.parametrize('path', ['/account', '/studio'])
+def test_every_page_header_has_the_projects_button(user, path):
+    button = _projects_button(_client(user).get(path).get_data(as_text=True))
+    assert ('aria-current="page"' in button) is (path == '/studio')
 
 
 def test_the_health_route_answers_without_signing_in():

@@ -360,7 +360,7 @@ def delete_project(project):
     from src.models import InternalShare, Recording
     from src.services.auto_shares import drop_stale_auto_shares
     from src.studio import materials
-    from src.studio.models import StudioMaterial, StudioVoiceReference
+    from src.studio.models import StudioMaterial, StudioProjectVisit, StudioVoiceReference
     folder = access.project_folder(project)
     for user_id in sorted(access.member_ids(project)):
         _remove_person(project, folder, project.group_id, user_id)
@@ -369,6 +369,7 @@ def delete_project(project):
         materials.delete_stored_file(material)
         db.session.delete(material)
     StudioVoiceReference.query.filter_by(project_id=project.id).delete()
+    StudioProjectVisit.query.filter_by(project_id=project.id).delete()
     if folder is not None:
         recording_ids = [rid for (rid,) in db.session.query(Recording.id).filter(Recording.folder_id == folder.id)]
         recording_ids += [rid for (rid,) in db.session.query(InternalShare.recording_id).filter(

@@ -101,6 +101,24 @@ class StudioVoiceReference(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class StudioProjectVisit(db.Model):
+    """When a person last opened a project's page: the order of the project switcher and list.
+
+    One row per person and project, kept on the server so every device shows
+    the same order. A row says nothing about access; the lists show only the
+    projects the person may see (src/studio/access.py).
+    """
+
+    __tablename__ = 'studio_project_visit'
+    __table_args__ = (db.UniqueConstraint('user_id', 'project_id', name='uq_studio_project_visit'),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('studio_project.id', ondelete='CASCADE'), nullable=False,
+                           index=True)
+    opened_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class StudioSchemaStep(db.Model):
     """The schema steps of src/studio/schema.py that have run on this database."""
 

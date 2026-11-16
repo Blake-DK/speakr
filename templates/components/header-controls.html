@@ -29,6 +29,17 @@
         <span class="hidden sm:inline" v-text="t('pwa.installApp')"></span>
     </button>
 
+    {#- studio add-on (this fork only; src/studio/): Projects, beside New Recording, with its
+        label from 640px and the film icon alone below, as New Recording does. -#}
+    {% if current_user.is_authenticated %}
+    <a href="/studio" data-studio-nav class="btn btn--sm header-action"
+       aria-label="{{ studio_t('studio.nav.projects') }}" title="{{ studio_t('studio.nav.projects') }}"
+       {%- if request.path == '/studio' or request.path.startswith('/studio/') %} aria-current="page"{% endif %}>
+        <i class="fas fa-film" aria-hidden="true"></i><span class="header-action__label hidden sm:inline">{{ studio_t('studio.nav.projects') }}</span>
+    </a>
+    {% endif %}
+    {#- end studio add-on -#}
+
     <!-- New Recording Button -->
     <button @click="switchToUploadView" class="btn btn--sm btn--primary header-action" :aria-label="t('nav.newRecording')">
         <i class="fas fa-plus"></i><span class="header-action__label hidden sm:inline" v-text="t('nav.newRecording')"></span>
@@ -99,11 +110,6 @@
             <a href="/account" class="block px-4 py-2 hover:bg-[var(--bg-tertiary)] transition-colors">
                 <i class="fas fa-cog mr-2 w-4 text-center"></i><span v-text="t('nav.settings')"></span>
             </a>
-            {#- studio add-on (this fork only; src/studio/) -#}
-            <a href="/studio" data-studio-nav class="block px-4 py-2 hover:bg-[var(--bg-tertiary)] transition-colors">
-                <i class="fas fa-film mr-2 w-4 text-center"></i><span>{{ studio_t('studio.nav.projects') }}</span>
-            </a>
-            {#- end studio add-on -#}
             <button @click="openSharesList" class="w-full text-left px-4 py-2 hover:bg-[var(--bg-tertiary)] transition-colors flex items-center">
                 <i class="fas fa-share-alt mr-2 w-4 text-center"></i><span v-text="t('modal.sharedTranscripts')"></span>
             </button>

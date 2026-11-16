@@ -43,6 +43,9 @@
 
                 const can = computed(() => (project.value && project.value.can) || {});
 
+                // The project switcher on the project's name (static/js/studio/switcher.js).
+                const switcher = window.studioSwitcher.useSwitcher({ currentId: projectId, api, st });
+
                 async function loadProject() {
                     const res = await api.request('GET', `/api/studio/projects/${projectId}`);
                     if (res.ok && res.data) {
@@ -86,6 +89,7 @@
                         project.value = res.data;
                         editing.value = false;
                         document.title = `${res.data.name} - Speakr`;
+                        if (body.name !== undefined) switcher.load();  // the new name in the switcher too
                     } else {
                         say(errorOf(res), true);
                     }
@@ -497,6 +501,8 @@
                         loading.value = false;
                         return;
                     }
+                    // The switcher's list loads beside the rest, so it opens at once.
+                    switcher.load();
                     await Promise.all([loadRecordings(), loadMaterials(), loadVoice()]);
                     loading.value = false;
                     const wanted = (window.location.hash || '').replace('#', '');
@@ -516,6 +522,7 @@
 
                 return {
                     st, api, language, tab, tabs, selectTab, loading, loadError, loadAll, project, can, flash, flashError,
+                    switcher,
                     editing, saving, draft, startEdit, saveDetails, deleteProject,
                     recordings, uploads, recordingInput, recordingDrag, statusLabel, statusClass, uploadLine,
                     pickRecordings, onRecordingFiles, onRecordingDrop,
