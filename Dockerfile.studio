@@ -1,0 +1,23 @@
+# The studio image: upstream Speakr's lite image, built from this repository
+# with the unmodified upstream Dockerfile (so it already holds the studio
+# add-on's code), plus whatever the add-on needs on top. Built and published by
+# .github/workflows/studio-publish.yml; in short:
+#
+#   docker build --build-arg PRODUCTION=1 --build-arg LIGHTWEIGHT=1 -t speakr-base:lite .
+#   docker build -f Dockerfile.studio --build-arg BASE_IMAGE=speakr-base:lite -t speakr-studio .
+#
+# Keep upstream's Dockerfile untouched; changes for the add-on go here.
+
+ARG BASE_IMAGE=speakr-base:lite
+FROM ${BASE_IMAGE}
+
+# The add-on's own Python packages will be installed here once it has some.
+
+# whisper/ is a separate service with its own image (whisper/Dockerfile.arc);
+# upstream's "COPY . ." picks it up, but the app does not use it.
+RUN rm -rf /app/whisper
+
+LABEL org.opencontainers.image.title="Speakr with the studio add-on" \
+      org.opencontainers.image.description="Speakr plus the studio add-on of this fork" \
+      org.opencontainers.image.source="https://github.com/Blake-DK/speakr" \
+      org.opencontainers.image.licenses="AGPL-3.0"

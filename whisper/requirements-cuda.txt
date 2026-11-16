@@ -1,0 +1,8 @@
+# ctranslate2 pinned exactly: >=4.5 requires CUDA>=12.3/cuDNN9, matching the
+# nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04 base image in Dockerfile.cuda.
+faster-whisper==1.2.1
+ctranslate2==4.8.1
+fastapi>=0.115
+uvicorn[standard]>=0.51.0
+python-multipart>=0.0.9
+numpy

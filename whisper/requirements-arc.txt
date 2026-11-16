@@ -1,0 +1,10 @@
+# Pinned exactly (not >=): openvino-genai's Python API is mid-transition
+# (WhisperPipeline -> ASRPipeline on master) -- re-verify the sample API
+# before bumping this pin.
+openvino==2026.2.1.0
+openvino-genai==2026.2.1.0
+huggingface_hub>=0.24
+fastapi>=0.115
+uvicorn[standard]>=0.51.0
+python-multipart>=0.0.9
+numpy
