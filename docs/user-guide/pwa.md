@@ -7,10 +7,11 @@ Speakr is a Progressive Web App that can be installed on your device for a more 
 A Progressive Web App combines the best of web and mobile apps:
 
 - **Installable** - Add to your home screen like a native app
-- **Fast loading** - Cached assets load instantly
+- **Fast loading** - Application files are kept in the browser
 - **Wake lock** - Prevents screen from auto-sleeping during recording
 - **No app store** - Install directly from your browser
 - **Auto-updates** - Always get the latest version automatically
+- **Offline notice** - A "You are offline" page is shown when the server cannot be reached
 
 ## Installing Speakr as a PWA
 
@@ -56,19 +57,58 @@ A Progressive Web App combines the best of web and mobile apps:
 
 ## PWA Features
 
-### Mobile-First Detail View (v0.9.0+)
+### Phone Layout
 
-The mobile recording detail view is a first-class member of the design system. When you open a recording on a phone you see:
+On a screen narrower than 768 px, the recording list and a recording are two separate screens. The layout is the same in every interface theme; a theme changes colors, shapes and type only.
 
-- **Single header** — the global app header carries the title + edit pen + regenerate-title; the per-recording strip below carries participants, status, folder / tag / share pills, and a chevron to expand for action toolbar + secondary metadata.
-- **Bottom navigation** — Summary, Transcript and the assistant (Ambrose) as direct tabs, plus a **More** overflow that opens a bottom-sheet for Notes / Stats / Events when those tabs are available.
-- **Contextual icons in the chevron row** — Copy / download / edit for Summary and Notes, the follow-player and view-mode toggles for Transcript, calendar-export for Events. Shares the chevron's row so it doesn't take a separate row of vertical space.
-- **Edge-to-edge content** — Panels run full-width to the screen edges instead of sitting inside nested gutters.
-- **Sticky speaker pills** — In the transcript, the speaker tablet pins to the top of the scroll area for the entire speaker's run.
-- **Editor with sticky Cancel / Save footer** — Markdown editing for Summary and Notes uses a flat-corner editor that spans edge-to-edge, with a sticky footer that keeps Cancel and Save reachable for long content.
-- **Audio player** — Sits above the bottom nav with `.btn--icon.btn--sm` consistency across speed / volume / download / fullscreen / video-toggle. The volume slider popover opens upward.
-- **Upload modal as a bottom sheet** — Drag the modal header down to dismiss; the sheet animates fully off-screen if you drag past 120 px or 25 % of viewport height.
-- **Processing queue as a bottom sheet** — When background jobs are running, the queue sits above the player + nav strip (was overlapping them in earlier versions).
+![The recording list on a phone](../assets/images/screenshots/mobile-main.png)
+
+**The recording list**
+
+- The top bar holds the menu button, the search field and the button for selection mode. Tags, speakers, a date range and the other filters are opened with the button inside the search field.
+- Under the top bar, filter chips are shown for the sort order, the folder, **Inbox**, **Starred**, **Archived** and **From others**. The chips are one row; the row is swiped sideways where the chips do not fit.
+- Notifications, shared recordings, settings, the color scheme, dark mode and **Sign out** are found in the menu. The same menu leads to Ask Ambrose and, for administrators, to the admin pages.
+- A recording is opened with a tap on its row.
+- **New recording** is a button over the lower right corner of the list. The upload and record choices are opened with it.
+- In selection mode, the actions for the selected recordings are shown in a bar at the bottom edge. Selection mode is left with **Done**.
+
+![A recording on a phone](../assets/images/screenshots/mobile-summary.png)
+
+**A recording**
+
+- One top bar is shown: the back arrow to the list, the title on up to two lines, the star and **More**.
+- The details block under the top bar is scrolled away with the text. Its first line gives the meeting date, the upload date when the recording was uploaded on another day, the length and the file size. Participants, the folder, tags and **Info** follow. The block is folded with a tap on its first line.
+- **Info** opens a sheet with the full details: both dates with their times, the file name, the owner of a shared recording, processing times and the transcription hints. The meeting date and the participants are changed from this sheet.
+- **More** opens the **Actions** sheet, in which every action for the recording is listed with a label: inbox, star and archive, folder, tags, rename, regenerate title, identify speakers, edit transcript, bubble view, download transcript, translate, reprocess, regenerate summary, events, speaker stats, share, download audio and the two delete actions. An action that the user's rights or the state of the recording do not allow is left out.
+- Four tabs are always shown at the bottom: **Summary**, **Transcript**, **Notes** and the assistant. Events and speaker stats are opened as sheets, from **Actions** or from the two buttons at the right end of the row above the summary.
+- **Copy**, **Download** and **Edit** are found above the summary and above the notes. The buttons for events and speaker stats are in the same row of the **Summary** tab, in the same place with and without a summary.
+- An empty tab shows an icon, a title and one hint, at the same height in all four tabs.
+
+![The transcript on a phone](../assets/images/screenshots/mobile-transcript.png)
+
+**The transcript**
+
+- A bar with the **Transcript** / **Translation** switch, find, copy and follow playback is pinned under the top bar. It remains in place while the transcript is scrolled, so the translation of the passage on screen is one tap away.
+- Find works in transcripts of any length on a phone. Matches are marked in the text, and the arrows in the find bar lead to the previous and the next match.
+- Bubble view, download, edit and translate are found in **Actions**.
+
+**The player**
+
+- One slim strip above the tabs shows play or pause, the position, the current speaker and a thin progress line.
+- A tap on the strip opens the player sheet with a scrubber, back and forward by 15 seconds, the playback speeds and **Download audio**. For a video recording the sheet also holds the video and fullscreen controls.
+- The player has no volume control on a phone. The volume is set with the keys of the phone.
+
+**The assistant**
+
+- The field for a question is shown on the assistant's tab only. It is one line high and grows with the text to about five lines.
+- While the on-screen keyboard is open, the player strip, the tabs and the details block are hidden, so the chat and the field remain visible above the keyboard.
+
+**Editors, uploads and the queue**
+
+- The summary and notes editors fill the screen, with **Cancel** and **Save** in a footer under the editor.
+- The upload dialog is a sheet that is dismissed with a downward drag on its header.
+- While the processing queue has rows, a one-line strip is shown above the player strip, and at the foot of the recording list. The queue is opened as a sheet with a tap on the strip. See [Processing Queue](recording.md#processing-queue).
+- Notifications are shown above the strip, the player and the tabs, and under the top bar while a sheet is open.
 
 ### Share to Speakr (Share Target)
 
@@ -81,19 +121,13 @@ Each account can share up to 20 files per hour this way (`SHARE_TARGET_RATE_LIMI
 !!! warning "Installed PWA only"
     Share-to-Speakr works only for the **installed PWA**, not a browser tab. If you installed the PWA before this feature shipped, reopen the app, then uninstall and reinstall it so Android registers the new share entry.
 
-### Offline Support
+### Without a Connection
 
-Once installed, Speakr caches essential files for offline use:
+A connection to the server is required: recordings, transcripts and summaries are loaded from it each time and are never kept in the browser by the service worker.
 
-- Application interface and UI
-- CSS stylesheets and fonts
-- JavaScript application code
-- Icons and images
-
-Note: API calls and file uploads require internet connection.
-
-!!! info "Offline Capabilities"
-    While you can access the app offline, transcription and AI features require an internet connection to your configured API endpoints.
+- When the server cannot be reached, a page with the text "You are offline" is shown in place of the browser's error page. The server is asked again every few seconds, and the requested page is loaded as soon as it answers, or with **Try again**.
+- The application files (scripts, styles, fonts, images, translations) are kept in the browser, so a page is loaded faster once the connection is there.
+- A recording in progress is kept in the browser until it is uploaded, and a failed upload is kept for a later retry. Both are described in the [recording guide](recording.md).
 
 ### Mobile Recording Features
 
@@ -104,13 +138,6 @@ Prevents your device screen from auto-sleeping while app is visible:
 - **Keeps screen on** - Prevents screen from turning off while app is in foreground
 - **Auto-recovery** - Re-acquires if released during recording
 - **Battery consideration** - Only active during recording sessions
-
-#### Persistent Notifications
-Shows recording status in your notification tray (mobile only):
-
-- **Status indicator** - Visual reminder that recording is active
-- **One-tap return** - Tap notification to return to the app
-- **Silent** - No sound or vibration
 
 #### Page Visibility Detection
 Monitors when the app goes to background:
@@ -155,9 +182,8 @@ Native apps don't have this limitation because they use platform-specific APIs t
 
 1. Start recording (microphone or system audio)
 2. Wake lock prevents screen from auto-sleeping
-3. Notification appears in notification tray
-4. **Keep Speakr visible** in the foreground
-5. Do not minimize, lock screen, or switch apps
+3. **Keep Speakr visible** in the foreground
+4. Do not minimize, lock screen, or switch apps
 
 **If you accidentally minimize:**
 
@@ -180,13 +206,7 @@ Native apps don't have this limitation because they use platform-specific APIs t
 - **Why**: Capture audio from browser tabs, applications
 - **Scope**: Only active during recording
 
-### Recommended Permissions
-
-#### Notification Permission (Mobile)
-- **When**: First recording on mobile device
-- **Why**: Show visual reminder that recording is active
-- **Impact**: Provides quick access to return to app
-- **Scope**: Only shown during active recordings
+The notification permission is not requested: no push messages and no system notifications are sent.
 
 !!! tip "Granting Permissions"
     If you accidentally deny a permission, you can reset it in your browser/device settings:
@@ -197,48 +217,29 @@ Native apps don't have this limitation because they use platform-specific APIs t
 
 ## Service Worker
 
-Speakr uses a service worker to provide PWA capabilities:
+A service worker is registered on the signed-in pages, with the whole app as its scope. A secure context is required by browsers: `https`, or `http` on `localhost`. Over plain `http` on another address no service worker exists; the app is used without it, and the browser's own error page is shown when the server cannot be reached.
 
-### What it Does
+### What It Does
 
-- **Caches static assets** - For offline access and faster loading
-- **Manages updates** - Automatically updates cached content
-- **Handles notifications** - Manages persistent recording notifications
-- **Background sync** - Foundation for future features like upload retry
+- **Application files** under `/static/` are kept in the browser's Cache Storage and are taken from there first.
+- **Pages** are always requested from the server. When that fails, the "You are offline" page is shown. No page is stored.
+- **Everything else** is passed to the server untouched: recordings, transcripts, audio, shared pages, the admin pages, sign-in, uploads. None of it is stored.
+- **At sign-out**, Cache Storage is emptied, together with the other data of the account in the browser. See [Browser storage](../admin-guide/privacy.md#browser-storage).
 
-### Viewing Service Worker Status
+Push messages, system notifications and background sync are not implemented.
+
+### Viewing the Status
 
 **Chrome DevTools:**
 
 1. Press F12 to open DevTools
-2. Go to **Application** tab
-3. Select **Service Workers** in the sidebar
-4. See registration status and version
+2. Go to the **Application** tab
+3. Select **Service Workers** in the sidebar: one registration is listed, with the source `sw.js?v=<version>`
+4. Select **Cache Storage**: one cache is listed, `speakr-static-<version>`, with files under `/static/` only
 
-**Console Logs:**
+### Updates
 
-The service worker logs its activity to the browser console:
-
-```
-[Service Worker] Installing...
-[Service Worker] Caching static assets
-[Service Worker] Activating...
-[Service Worker] Script loaded
-```
-
-### Updating Service Worker
-
-The service worker automatically updates:
-
-- **Check interval**: Every 60 seconds while app is open
-- **Update process**: Downloads new version in background
-- **Activation**: Takes effect on next page reload
-
-To force an update:
-
-1. Close all Speakr tabs/windows
-2. Reopen Speakr
-3. New service worker activates automatically
+A new address is used for the worker file with each release (`/sw.js?v=<version>`). The new worker is installed at the first page load after an upgrade and is put in control of the open tabs at once, and the cache of the release before it is deleted. No tab has to be closed. A registration from a release before the scope was changed (`/static/sw.js`) is removed at the same time.
 
 ## Browser Compatibility
 
@@ -249,7 +250,6 @@ To force an update:
 | PWA Install | ✅ Android 5+ | ✅ iOS 11.3+ | ✅ 4.0+ |
 | Service Worker | ✅ Chrome 40+ | ✅ iOS 11.3+ | ✅ 4.0+ |
 | Wake Lock | ✅ Chrome 84+ | ✅ iOS 16.4+ | ✅ 13.0+ |
-| Notifications | ✅ Chrome 42+ | ✅ iOS 16.4+ | ✅ 4.0+ |
 | Page Visibility | ✅ All versions | ✅ All versions | ✅ All versions |
 
 ### Desktop Browsers
@@ -292,35 +292,17 @@ To force an update:
 1. **Confirm the PWA is installed** - Share-to-Speakr only works for the installed app, not a browser tab
 2. **Reinstall the PWA** - If you installed before share support shipped, reopen the app, then uninstall and reinstall it so Android registers the share entry
 
-### Service Worker Not Registering
+### Service Worker Not Registered
 
-**Check console for errors:**
+1. **Check the address** - A service worker exists only over `https`, or over `http` on `localhost`. Over `http://192.168.x.x` none is registered, and the app is used without it
+2. **Check the browser** - A private window of some browsers has no service workers
+3. **Reload once** - The worker is registered after the first page load, and the page is controlled by it from the next load on
 
-```javascript
-// Open browser console (F12)
-// Look for service worker errors
-```
+### A Page Stays on "You are offline"
 
-**Solutions:**
-
-1. **Verify HTTPS** - Service workers require secure context
-2. **Check browser support** - Update to latest browser version
-3. **Clear site data** - Browser settings → Clear site data
-4. **Hard reload** - Ctrl+Shift+R (Windows) or Cmd+Shift+R (Mac)
-
-### Offline Features Not Working
-
-**Verify:**
-
-1. Service worker is registered (check DevTools → Application)
-2. Assets are cached (check DevTools → Application → Cache Storage)
-3. You've visited the site at least once while online
-
-**Solutions:**
-
-- Reload the page while online
-- Clear cache and reload
-- Uninstall and reinstall PWA
+1. **Check the connection** to the server; the page is loaded again as soon as the server answers
+2. **Select Try again** on the page
+3. **Check the server** - The same page is shown when the server or the reverse proxy does not answer
 
 ## Best Practices
 
@@ -342,9 +324,10 @@ To force an update:
 ### Privacy Considerations
 
 1. **Microphone access** - Only granted during recording
-2. **Notifications** - Only shown during recording (mobile)
-3. **Cached data** - Stored locally on your device
-4. **Service worker** - Can be unregistered in browser settings
+2. **Notifications** - None are sent, and the permission is not requested
+3. **Cached data** - Only application files are kept by the service worker; they are removed at sign-out
+4. **Shared computers** - Sign out after use: the data of the account in the browser is removed then
+5. **Service worker** - Can be unregistered in browser settings
 
 ## Uninstalling the PWA
 

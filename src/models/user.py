@@ -118,6 +118,10 @@ class User(db.Model, UserMixin):
     # UI/display preferences
     show_timestamps_simple_view = db.Column(db.Boolean, default=False)
     editor_autosave = db.Column(db.Boolean, default=False)
+    # Keyboard shortcuts in the web app (docs/user-guide/keyboard-shortcuts.md).
+    # On unless the user turns them off; NULL (an account from before the
+    # column) means on.
+    keyboard_shortcuts = db.Column(db.Boolean, default=True)
     # Speaker-count entry mode in transcription UIs: 'range' (min/max)
     # or 'single' (one count, stored as min == max). Null means 'range' (#362).
     speaker_count_mode = db.Column(db.String(10), nullable=True)
@@ -150,6 +154,12 @@ class User(db.Model, UserMixin):
     # refused. Null and 0 keep the plain id, so sign-ins made before the
     # column existed stay valid until the password is next set.
     session_version = db.Column(db.Integer, nullable=True, default=0)
+
+    # Time of the last use of the account (browser session or API token), for
+    # the "Last active" column of the admin user list. NULL means never. Only
+    # this one time is kept, no history. Written at most once per five minutes,
+    # outside the session of the request; see src/services/last_active.py.
+    last_seen_at = db.Column(db.DateTime, nullable=True)
 
     def get_id(self):
         version = self.session_version or 0

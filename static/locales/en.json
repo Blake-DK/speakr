@@ -458,6 +458,7 @@
     "settingFromEnv": "Set in .env",
     "deletionModeAudioOnly": "Audio only",
     "deletionModeFullRecording": "Full recording",
+    "lastActive": "Last active",
     "lastUpdated": "Last updated",
     "maxFileSizeHelp": "Maximum file size in megabytes (1-10000 MB)",
     "megabytes": "MB",
@@ -832,6 +833,65 @@
     "toggleSelected": "Archive or unarchive the selected recordings",
     "unarchive": "Move out of the archive",
     "unarchivedToast": "Recording moved out of the archive"
+  },
+  "auditLog": {
+    "tab": "Audit log",
+    "exportCsv": "Export CSV",
+    "exportJsonl": "Export JSONL",
+    "dismiss": "Dismiss",
+    "notice": "Sign-ins, access to recordings, changes, shares and administrative actions are recorded in this log.",
+    "noticeAddress": "The client address is stored with each event.",
+    "noticeNoAddress": "Client addresses are not stored.",
+    "noticeDays": "Events are kept for {{days}} days.",
+    "noticeNoLimit": "Events are kept without limit.",
+    "noticeSettings": "Both are set in System settings.",
+    "off": "The audit log is off. Only changes to its own settings are recorded.",
+    "from": "From",
+    "to": "To",
+    "user": "User",
+    "userPlaceholder": "Username or ID",
+    "events": "Events",
+    "all": "All",
+    "recordingId": "Recording ID",
+    "result": "Result",
+    "accessBy": "Access by",
+    "clear": "Clear filters",
+    "time": "Time",
+    "event": "Event",
+    "recording": "Recording",
+    "address": "Address",
+    "target": "Affected user",
+    "owner": "Owner",
+    "group": "Group",
+    "userAgent": "User agent",
+    "deletedUser": "Deleted user #{{id}}",
+    "empty": "No events",
+    "loadFailed": "The audit log could not be loaded.",
+    "newer": "Newer",
+    "older": "Older",
+    "viewActivity": "View activity",
+    "groups": {
+      "auth": "Sign-in",
+      "access": "Access",
+      "change": "Changes",
+      "share": "Sharing",
+      "admin": "Administration",
+      "incognito": "Incognito",
+      "audit": "Audit log"
+    },
+    "outcomes": {
+      "success": "Success",
+      "denied": "Denied",
+      "failed": "Failed"
+    },
+    "actors": {
+      "session": "Browser",
+      "api_token": "API token",
+      "sso_token": "SSO token",
+      "public_link": "Public link",
+      "system": "System",
+      "anonymous": "Not signed in"
+    }
   },
   "asrEditor": {
     "saved": "Saved",
@@ -1552,7 +1612,10 @@
     "updateSpeakerNamesFailed": "Couldn't update speaker names",
     "updateSummaryFailed": "Couldn't update summary",
     "updateTranscriptFailed": "Couldn't save the transcript",
-    "updateTranscriptionFailed": "Couldn't save the transcript"
+    "updateTranscriptionFailed": "Couldn't save the transcript",
+    "canceledTitle": "Processing canceled",
+    "canceledMessage": "The transcription of this recording was canceled before it finished.",
+    "canceledGuidance": "Use Reprocess to start the transcription again."
   },
   "eventExtraction": {
     "description": "Find meetings, appointments and deadlines mentioned in recordings, as calendar events you can download.",
@@ -2000,6 +2063,7 @@
   "incognito": {
     "audioNotStored": "Audio not stored in incognito mode",
     "discardConfirm": "Discard the incognito recording? It can't be recovered.",
+    "lostIfTabCloses": "Lost if the tab or browser closes",
     "mode": "Incognito mode",
     "notSavedToAccount": "Not saved to account",
     "oneFileAtATime": "One file at a time in incognito mode",
@@ -2371,6 +2435,9 @@
     "autoProcessFailed": "{{filename}} couldn't be processed after several attempts and was renamed to {{failed_name}} in the watch folder. Rename it back to try again."
   },
   "preferences": {
+    "keyboard": "Keyboard",
+    "keyboardShortcuts": "Keyboard shortcuts",
+    "keyboardShortcutsHelp": "Single keys for the recording list, the open recording and the player. Press ? on a computer for the list of keys. On by default.",
     "autoTranslation": "Auto-translate new recordings",
     "autoTranslationDisabled": "Turned off by your administrator.",
     "autoTranslationHelp": "Translate each new recording into your output language once it is transcribed. When off (the default), use Generate translation. Translations count toward your monthly token budget.",
@@ -2406,44 +2473,74 @@
   },
   "progressQueue": {
     "title": "Processing queue",
-    "clear": "Clear",
-    "uploading": "{{count}} uploading",
-    "transcribing": "{{count}} transcribing",
-    "summarizing": "{{count}} summarizing",
-    "queued": "{{count}} queued",
     "cancel": "Cancel",
     "failed": "Failed",
-    "completed": "Completed",
     "done": "Done",
     "empty": "The queue is empty",
     "duplicateWarning": "Duplicate file detected",
     "retry": "Retry",
     "delete": "Delete",
-    "uploadingShort": "uploading",
-    "transcribingShort": "transcribing",
-    "summarizingShort": "summarizing",
-    "queuedShort": "queued",
-    "joiningShort": "joining",
     "joining": "Joining",
     "joiningMessage": "Joining audio files…",
-    "convertingShort": "converting",
     "converting": "Converting",
-    "convertingMessage": "Converting the audio file…",
-    "processingOnServer": "Processing…",
     "waitingForJoin": "Uploaded, waiting for {{count}} more file to join",
     "waitingForJoinPlural": "Uploaded, waiting for {{count}} more files to join",
-    "positionInQueue": "#{{position}} in queue",
-    "transcribingAudio": "Transcribing audio…",
     "unknownFile": "Unknown file",
     "uploadFailed": "Upload failed",
-    "uploadingMessage": "Uploading…",
     "waiting": "Waiting",
     "waitingForProcessing": "Uploaded, waiting for processing…",
     "waitingToUpload": "Waiting to upload…",
     "region": "Processing queue items",
     "translating": "Translating",
-    "translatingShort": "translating",
-    "translatingMessage": "Translating the transcript"
+    "count": {
+      "processing": "{{count}} processing",
+      "queued": "{{count}} queued",
+      "failed": "{{count}} failed",
+      "finished": "{{count}} finished",
+      "inQueue": "{{count}} in queue"
+    },
+    "groups": {
+      "active": "Active",
+      "waiting": "Waiting",
+      "failed": "Failed",
+      "done": "Recently finished"
+    },
+    "stage": {
+      "assembling": "Assembling",
+      "titling": "Titling",
+      "indexing": "Indexing"
+    },
+    "queuedFor": {
+      "conversion": "Queued #{{position}} for conversion",
+      "transcription": "Queued #{{position}} for transcription",
+      "summary": "Queued #{{position}} for summary",
+      "translation": "Queued #{{position}} for translation"
+    },
+    "detail": {
+      "waiting": "waiting",
+      "preparing": "preparing",
+      "aligning": "aligning",
+      "diarizing": "identifying speakers",
+      "onServer": "processing on the server"
+    },
+    "canceling": "Canceling…",
+    "partsOf": "{{done}} of {{total}}",
+    "elapsed": "Time since this step started",
+    "justNow": "just now",
+    "minutesAgo": "{{count}} min ago",
+    "hoursAgo": "{{count}} h ago",
+    "clearFinished": "Clear finished",
+    "clearFailed": "Clear failed",
+    "open": "Open recording",
+    "remove": "Remove from the list",
+    "duplicate": "Duplicate file",
+    "emptyHint": "New uploads and reprocessing jobs appear here.",
+    "cancelConfirm": {
+      "title": "Cancel transcription?",
+      "message": "\"{{title}}\" has no transcript yet. After a cancel the recording is marked as failed and the audio is kept.",
+      "confirm": "Cancel transcription",
+      "keep": "Keep processing"
+    }
   },
   "promptVariables": {
     "title": "Prompt variables",
@@ -2837,8 +2934,7 @@
     "stuck": "Reset stuck processing",
     "summarizing": "Summarizing",
     "transcribing": "Transcribing",
-    "uploading": "Uploading",
-    "queuedTranslation": "Queued (translation)"
+    "uploading": "Uploading"
   },
   "summary": {
     "actionItems": "Action items",
@@ -2856,7 +2952,8 @@
     "title": "Summary",
     "customizePrompt": "Customize prompt",
     "editingSaveHint": "Editing. Save from the tab bar above.",
-    "needsTranscription": "A summary is available once the transcript is finished."
+    "needsTranscription": "A summary is available once the transcript is finished.",
+    "emptyHint": "A summary is generated from the transcript."
   },
   "tagManagement": {
     "asrDefaults": "ASR defaults",
@@ -2971,7 +3068,6 @@
     "editTranscript": "Edit transcript",
     "enterFullscreen": "Fullscreen",
     "exitFullscreen": "Exit fullscreen",
-    "expand": "Expand",
     "followPlayerDisabled": "Follow playback",
     "followPlayerEnabled": "Stop following playback",
     "fullscreenVideo": "Fullscreen video",
@@ -3069,7 +3165,8 @@
     "speaker": "Speaker {{number}}",
     "speakerLabels": "Speaker labels",
     "title": "Transcript",
-    "unknownSpeaker": "Unknown speaker"
+    "unknownSpeaker": "Unknown speaker",
+    "emptyHint": "The transcript is shown here after processing."
   },
   "unifiedShareModal": {
     "noPublicLinks": "No public share links yet",
@@ -3500,6 +3597,10 @@
       "invalid_username_length": "The username must be 2 to 20 characters.",
       "invalid_with_sources": "with_sources must be true or false",
       "job_not_found": "Job not found",
+      "upload_canceled": "The upload was canceled",
+      "invalid_client_upload_id": "Invalid client_upload_id",
+      "job_not_cancelable": "This job cannot be canceled",
+      "job_already_finished": "The job has already finished",
       "job_retry_failed_only": "Only failed jobs can be retried",
       "keep_audio_only_immutable": "keep_audio_only is set at upload time and cannot be changed afterwards.",
       "last_admin_demotion": "Cannot remove admin rights from the last remaining admin.",
@@ -3562,6 +3663,7 @@
       "public_sharing_disabled": "Public sharing is turned off on this server",
       "public_sharing_off": "Public sharing is turned off on this server",
       "push_unavailable": "Push notifications not available",
+      "query_token_disabled": "A token in the ?token= query parameter is not accepted on this server; send it in the Authorization: Bearer header",
       "query_token_read_only": "A token in the ?token= query parameter is accepted only on GET and HEAD requests; send it in the Authorization: Bearer header",
       "question_required": "question is required",
       "recording_already_processing": "Recording is already being processed",
@@ -3617,6 +3719,7 @@
       "speaker_map_required": "speaker_map is required",
       "speaker_name_empty": "Speaker name cannot be empty",
       "speaker_name_exists": "A speaker named \"{{name}}\" already exists",
+      "speaker_name_generic": "A diarization label such as SPEAKER_00 cannot be saved as a speaker name",
       "speaker_name_required": "Speaker name is required",
       "speaker_name_taken": "Speaker with this name already exists",
       "speaker_not_found": "Speaker not found",
@@ -3628,7 +3731,6 @@
       "summary_field_required": "summary field required",
       "summary_generate_denied": "You do not have permission to generate summary for this recording",
       "summary_generation_failed": "Couldn't generate the summary. Check that the language model service is running.",
-      "summary_generation_failed_detail": "Couldn't generate summary: {{detail}}",
       "summary_llm_not_configured": "Summary service is not available (LLM client not configured)",
       "summary_openrouter_not_configured": "Summary service is not available (OpenRouter client not configured)",
       "system_info_unavailable": "Unable to retrieve system information",
@@ -3704,6 +3806,7 @@
       "invalid_assistant_name": "The assistant's name can have up to 40 letters, digits, spaces, dots, hyphens or apostrophes, and starts with a letter or digit",
       "summary_prompt_invalid": "The prompt can't be empty or longer than 8,000 characters.",
       "summary_prompt_save_denied": "You can't save the prompt there.",
+      "invalid_audit_filter": "A filter of the audit log has an invalid value",
       "invalid_filter_date": "Couldn't read the date filter",
       "invalid_default_ui_theme": "Invalid default UI theme. Must be one of: {{themes}}",
       "invalid_default_color_scheme": "Invalid default color scheme. Must be one of: {{schemes}}",
@@ -3732,6 +3835,8 @@
       "inquireAllProcessed": "Every recording is already prepared for library search",
       "inquireProcessedRemaining": "Processed {{processed}} recordings. {{remaining}} remaining.",
       "jobDeleted": "Job deleted",
+      "jobCanceled": "Job canceled",
+      "jobCancelRequested": "The job is being canceled",
       "jobQueuedForRetry": "Job queued for retry",
       "modelDiscoveryUnsupported": "{{connector}} does not expose a model discovery endpoint.",
       "noRecordingsToReembed": "No recordings to re-embed.",
@@ -4018,6 +4123,11 @@
       "0_10_23": {
         "1": "The transcript editor has a timeline with the waveform. Segments can be moved or resized by clicking and dragging.",
         "2": "Long transcripts can be searched using the Ctrl+F shortcut."
+      },
+      "0_11_0": {
+        "1": "The phone layout is rebuilt, with one layout in every theme.",
+        "2": "The processing queue shows active, waiting and failed jobs. Jobs and uploads can be canceled.",
+        "3": "Keyboard shortcuts are available on the desktop. The keys are listed with ?."
       }
     }
   },
@@ -4026,7 +4136,8 @@
     "scopeRecording": "This recording",
     "scopeLibrary": "All recordings",
     "sendHint": "Send (Enter). For a new line, press Ctrl+Enter.",
-    "jumpToLatest": "Jump to latest"
+    "jumpToLatest": "Jump to latest",
+    "recordingHint": "Questions are answered from this recording."
   },
   "regenerateSummary": {
     "title": "Regenerate summary",
@@ -4073,5 +4184,95 @@
   },
   "toast": {
     "dismiss": "Dismiss notification"
+  },
+  "phone": {
+    "about": "More about this recording",
+    "back15": "Back 15 seconds",
+    "backToList": "Back to recordings",
+    "changeMeetingDate": "Change meeting date",
+    "editParticipants": "Edit participants",
+    "folder": "Folder",
+    "forward15": "Forward 15 seconds",
+    "menu": "Menu",
+    "moreFilters": "More filters",
+    "off": "Off",
+    "on": "On",
+    "openPlayer": "Open player",
+    "organize": "Organize",
+    "position": "Position",
+    "sections": "Recording sections",
+    "shareExport": "Share and export",
+    "showAsBubbles": "Show as bubbles",
+    "speakerStats": "Speaker stats",
+    "textShown": "Text shown",
+    "translateAgain": "Translate again",
+    "uploaded": "uploaded {{date}}",
+    "uploadedLabel": "Uploaded",
+    "uploadedOn": "Uploaded {{date}}"
+  },
+  "signOut": {
+    "localCopiesTitle": "Delete the copies in this browser?",
+    "localCopiesMessageOne": "This browser holds 1 recording or upload that did not reach the server. It is deleted from this browser at sign-out.",
+    "localCopiesMessage": "This browser holds {{count}} recordings or uploads that did not reach the server. They are deleted from this browser at sign-out.",
+    "deleteAndSignOut": "Delete and sign out"
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "then": "then",
+    "or": "or",
+    "settingHint": "Turn keyboard shortcuts on or off in Account, Preferences.",
+    "keys": {
+      "space": "Space"
+    },
+    "groups": {
+      "general": "General",
+      "navigation": "Go to",
+      "list": "Recordings",
+      "recording": "Open recording",
+      "player": "Player",
+      "assistant": "Assistant",
+      "editor": "Segment editor",
+      "video": "Full-screen video"
+    },
+    "showHelp": "Show keyboard shortcuts",
+    "close": "Close the dialog, menu or panel on top",
+    "search": "Search recordings",
+    "newRecording": "New recording",
+    "toggleQueue": "Show or hide the processing queue",
+    "goRecordings": "Recordings",
+    "goAssistant": "Ask {{name}}",
+    "goSettings": "Account settings",
+    "goAdmin": "Administration",
+    "moveInList": "Next or previous recording",
+    "openRecording": "Open the selected recording",
+    "star": "Star or remove the star",
+    "inbox": "Move to the inbox or mark as read",
+    "archive": "Archive or unarchive",
+    "delete": "Delete",
+    "selectAll": "Select all, in selection mode",
+    "tab": {
+      "summary": "Show the summary",
+      "notes": "Show the notes",
+      "stats": "Show the speaker stats",
+      "events": "Show the events"
+    },
+    "toggleView": "Switch between simple and bubble view",
+    "copyTranscript": "Copy the transcript",
+    "copyTab": "Copy the summary or the notes",
+    "editTranscript": "Edit the transcript",
+    "editTab": "Edit the summary or the notes",
+    "openChat": "Open the chat with {{name}}",
+    "findInTranscript": "Find in a long transcript",
+    "playPause": "Play or pause",
+    "skip5": "Back or forward 5 seconds",
+    "skip15": "Back or forward 15 seconds",
+    "speed": "Slower or faster playback",
+    "editorHelp": "Show the keys of the segment editor",
+    "editorSave": "Save",
+    "editorFind": "Find and replace",
+    "videoSkip": "Back or forward 10 seconds",
+    "videoVolume": "Volume up or down",
+    "videoLeave": "Leave full screen",
+    "focusQuestion": "Write a question to {{name}}"
   }
 }

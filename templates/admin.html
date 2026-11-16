@@ -22,6 +22,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/primitives.css', v=app_version) }}">
     {% include 'includes/i18n_bootstrap.html' %}
     <script src="{{ url_for('static', filename='js/i18n.js', v=app_version) }}"></script>
+    <!-- Service worker registration, and what is removed from the browser at sign-out -->
+    <script src="{{ url_for('static', filename='js/service-worker-client.js', v=app_version) }}" data-register></script>
     <!-- The app's own confirm, message and input dialogs (window.confirmDialog, alertDialog, promptDialog) -->
     <script src="{{ url_for('static', filename='js/app-dialog.js', v=app_version) }}"></script>
     <style>
@@ -72,13 +74,13 @@
                 // Update all elements with data-i18n attribute
                 document.querySelectorAll('[data-i18n]').forEach(el => {
                     const key = el.getAttribute('data-i18n');
-                    el.textContent = t(key);
+                    el.textContent = t(key) || el.textContent; // empty while English is fetched (i18n.js)
                 });
                 
                 // Update all elements with data-i18n-placeholder attribute
                 document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
                     const key = el.getAttribute('data-i18n-placeholder');
-                    el.placeholder = t(key);
+                    el.placeholder = t(key) || el.placeholder;
                 });
             }
         }
@@ -208,6 +210,11 @@
                                 :class="{ 'is-active': activeTab === 'vectorstore' }">
                             <i class="fas fa-database"></i><span>${t('adminDashboard.vectorStore')}</span>
                         </button>
+                        <button v-if="!isTeamAdminOnly" @click="activeTab = 'audit'"
+                                class="tab" data-audit-tab
+                                :class="{ 'is-active': activeTab === 'audit' }">
+                            <i class="fas fa-clipboard-list"></i><span>${t('auditLog.tab')}</span>
+                        </button>
                     </nav>
                     <button type="button" class="tabs-scroller__nav tabs-scroller__nav--right" :aria-label="t('adminDashboard.scrollRight')">
                         <i class="fas fa-chevron-right"></i>
@@ -242,12 +249,25 @@
                             <thead class="bg-[var(--bg-tertiary)]">
                                 <tr>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('adminDashboard.id')}</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('adminDashboard.username')}</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider"
+                                        :aria-sort="userSort.key === 'username' ? (userSort.dir > 0 ? 'ascending' : 'descending') : 'none'">
+                                        <button type="button" @click="sortUserListBy('username')" class="inline-flex items-center gap-1 uppercase tracking-wider hover:text-[var(--text-primary)]">
+                                            <span>${t('adminDashboard.username')}</span>
+                                            <i class="fas text-[10px]" :class="userSort.key === 'username' ? (userSort.dir > 0 ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort opacity-40'"></i>
+                                        </button>
+                                    </th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('adminDashboard.email')}</th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('adminDashboard.admin')}</th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('adminDashboard.publicShare')}</th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('adminDashboard.recordings')}</th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('adminDashboard.storageUsed')}</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider"
+                                        :aria-sort="userSort.key === 'last_active' ? (userSort.dir > 0 ? 'ascending' : 'descending') : 'none'">
+                                        <button type="button" @click="sortUserListBy('last_active')" class="inline-flex items-center gap-1 uppercase tracking-wider hover:text-[var(--text-primary)]">
+                                            <span>${t('adminDashboard.lastActive')}</span>
+                                            <i class="fas text-[10px]" :class="userSort.key === 'last_active' ? (userSort.dir > 0 ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort opacity-40'"></i>
+                                        </button>
+                                    </th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('adminDashboard.actions')}</th>
                                 </tr>
                             </thead>
@@ -276,6 +296,15 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-[var(--text-secondary)]">
                                         ${ formatFileSize(user.storage_used) }<span v-if="user.storage_quota_mb" class="text-xs" :class="storagePctClass(storagePct(user)) || 'text-[var(--text-muted)]'"> / ${ formatFileSize(user.storage_quota_mb * 1048576) }</span>
                                     </td>
+                                    <!-- Last active: relative time, the full date and time on hover -->
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-[var(--text-muted)]">
+                                        <time v-if="user.last_seen_at"
+                                              :datetime="user.last_seen_at"
+                                              :title="formatDate(user.last_seen_at)">
+                                            ${ formatRelativeTime(user.last_seen_at) }
+                                        </time>
+                                        <span v-else>${ t('adminDashboard.never') }</span>
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-[var(--text-secondary)]">
                                         <div class="flex space-x-2">
                                             <button @click="editUser(user)" class="text-[var(--text-accent)] hover:text-[var(--text-accent-hover)]" :title="t('buttons.editUser')">
@@ -284,6 +313,9 @@
                                             <button @click="toggleAdminStatus(user)" :class="user.is_admin ? 'text-[var(--text-warn-strong)]' : 'text-[var(--text-info-strong)]'" :title="user.is_admin ? t('tooltips.removeAdmin') : t('tooltips.makeAdmin')">
                                                 <i class="fas" :class="user.is_admin ? 'fa-user-minus' : 'fa-user-shield'"></i>
                                             </button>
+                                            <button @click="viewUserActivity(user)" class="text-[var(--text-muted)] hover:text-[var(--text-primary)]" :title="t('auditLog.viewActivity')" :aria-label="t('auditLog.viewActivity')" data-audit-view-activity>
+                                                <i class="fas fa-clipboard-list"></i>
+                                            </button>
                                             <button @click="confirmDeleteUser(user)" class="text-[var(--text-danger)] hover:text-[var(--text-danger-hover)]" :title="t('buttons.deleteUser')">
                                                 <i class="fas fa-trash"></i>
                                             </button>
@@ -291,7 +323,7 @@
                                     </td>
                                 </tr>
                                 <tr v-if="users.length === 0">
-                                    <td colspan="8" class="px-6 py-4 text-center text-sm text-[var(--text-muted)]">
+                                    <td colspan="9" class="px-6 py-4 text-center text-sm text-[var(--text-muted)]">
                                         <div v-if="isLoadingUsers">
                                             <i class="fas fa-spinner fa-spin mr-2"></i> ${ t('adminDashboard.loadingUsers') }
                                         </div>
@@ -413,7 +445,7 @@
                                     <p class="text-xs font-medium text-[var(--text-muted)] mb-1.5">${t('adminDashboard.statsPage.latestFailures')}</p>
                                     <ul class="space-y-1.5">
                                         <li v-for="f in overview.failed_recent" :key="f.id" class="text-xs min-w-0" :title="f.error">
-                                            <p class="text-[var(--text-primary)] truncate" v-text="f.title"></p>
+                                            <p class="text-[var(--text-primary)] truncate" v-text="'#' + f.id"></p>
                                             <p class="text-[var(--text-muted)] truncate">
                                                 <span v-text="f.username"></span> · <span v-text="formatDate(f.created_at)"></span><span v-if="f.error"> · </span><span v-text="f.error"></span>
                                             </p>
@@ -1246,7 +1278,7 @@ Summarization Instructions:
                                     <p class="text-sm font-medium">${ t('adminDashboard.failedRecordingsLabel') }:</p>
                                     <ul class="text-xs mt-1 space-y-1">
                                         <li v-for="fail in processingResult.failed" :key="fail.id">
-                                            ID ${ fail.id }: ${ fail.title } - ${ fail.reason }
+                                            ID ${ fail.id }: ${ fail.reason }
                                         </li>
                                     </ul>
                                 </div>
@@ -1271,6 +1303,139 @@ Summarization Instructions:
                                 ${ isProcessingRecordings ? t('adminDashboard.reembedding') : t('adminDashboard.reembedAll') }
                             </button>
                         </div>
+                    </div>
+                  </div><!-- /.tab-scroll -->
+                  <div class="tab-footer"></div>
+                </div>
+
+                <!-- Audit log tab: read-only, site admins only. Newest first,
+                     paged by id (Older, Newer), filtered on the server. -->
+                <div class="tab-content" :class="{ hidden: activeTab !== 'audit' }" v-if="!isTeamAdminOnly" data-audit-log>
+                  <div class="tab-scroll">
+                    <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+                        <h3 class="text-lg font-medium text-[var(--text-secondary)]">${t('auditLog.tab')}</h3>
+                        <div class="flex items-center gap-2">
+                            <a :href="auditExportUrl('csv')" class="btn btn--sm btn--ghost" data-audit-export="csv">
+                                <i class="fas fa-download mr-2"></i>${t('auditLog.exportCsv')}
+                            </a>
+                            <a :href="auditExportUrl('jsonl')" class="btn btn--sm btn--ghost" data-audit-export="jsonl">
+                                <i class="fas fa-download mr-2"></i>${t('auditLog.exportJsonl')}
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Shown once per installation, until an admin dismisses it -->
+                    <div v-if="auditNotice" class="bg-[var(--bg-info-light)] text-[var(--text-info-strong)] p-3 rounded-lg mb-4 flex items-start justify-between gap-3 text-sm" data-audit-notice>
+                        <p>${ auditNoticeText }</p>
+                        <button type="button" @click="dismissAuditNotice" class="btn btn--sm btn--ghost flex-shrink-0">${t('auditLog.dismiss')}</button>
+                    </div>
+                    <div v-if="auditLoaded && !auditEnabled" class="bg-[var(--bg-warn-light)] text-[var(--text-warn-strong)] p-3 rounded-lg mb-4 text-sm" data-audit-off>
+                        ${t('auditLog.off')}
+                    </div>
+
+                    <!-- Filters -->
+                    <div class="flex flex-wrap items-end gap-3 mb-4" data-audit-filters>
+                        <label class="flex flex-col text-xs text-[var(--text-muted)]">
+                            <span class="mb-1">${t('auditLog.from')}</span>
+                            <input type="date" v-model="auditFilters.from" class="h-9 px-2 border border-[var(--border-secondary)] rounded-lg bg-[var(--bg-input)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]" data-audit-filter="from">
+                        </label>
+                        <label class="flex flex-col text-xs text-[var(--text-muted)]">
+                            <span class="mb-1">${t('auditLog.to')}</span>
+                            <input type="date" v-model="auditFilters.to" class="h-9 px-2 border border-[var(--border-secondary)] rounded-lg bg-[var(--bg-input)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]" data-audit-filter="to">
+                        </label>
+                        <label class="flex flex-col text-xs text-[var(--text-muted)]">
+                            <span class="mb-1">${t('auditLog.user')}</span>
+                            <input type="text" v-model.trim="auditFilters.user" :placeholder="t('auditLog.userPlaceholder')" class="h-9 px-2 border border-[var(--border-secondary)] rounded-lg bg-[var(--bg-input)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] w-40" data-audit-filter="user">
+                        </label>
+                        <label class="flex flex-col text-xs text-[var(--text-muted)]">
+                            <span class="mb-1">${t('auditLog.events')}</span>
+                            <select v-model="auditFilters.group" class="h-9 px-2 border border-[var(--border-secondary)] rounded-lg bg-[var(--bg-input)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]" data-audit-filter="group">
+                                <option value="">${t('auditLog.all')}</option>
+                                <option v-for="name in auditGroups" :key="name" :value="name">${ t('auditLog.groups.' + name) }</option>
+                            </select>
+                        </label>
+                        <label class="flex flex-col text-xs text-[var(--text-muted)]">
+                            <span class="mb-1">${t('auditLog.recordingId')}</span>
+                            <input type="number" min="1" v-model.trim="auditFilters.recording_id" class="h-9 px-2 border border-[var(--border-secondary)] rounded-lg bg-[var(--bg-input)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)] w-28" data-audit-filter="recording_id">
+                        </label>
+                        <label class="flex flex-col text-xs text-[var(--text-muted)]">
+                            <span class="mb-1">${t('auditLog.result')}</span>
+                            <select v-model="auditFilters.outcome" class="h-9 px-2 border border-[var(--border-secondary)] rounded-lg bg-[var(--bg-input)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]" data-audit-filter="outcome">
+                                <option value="">${t('auditLog.all')}</option>
+                                <option v-for="name in auditOutcomes" :key="name" :value="name">${ t('auditLog.outcomes.' + name) }</option>
+                            </select>
+                        </label>
+                        <label class="flex flex-col text-xs text-[var(--text-muted)]">
+                            <span class="mb-1">${t('auditLog.accessBy')}</span>
+                            <select v-model="auditFilters.actor_kind" class="h-9 px-2 border border-[var(--border-secondary)] rounded-lg bg-[var(--bg-input)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--border-focus)]" data-audit-filter="actor_kind">
+                                <option value="">${t('auditLog.all')}</option>
+                                <option v-for="name in auditActorKinds" :key="name" :value="name">${ t('auditLog.actors.' + name) }</option>
+                            </select>
+                        </label>
+                        <button v-if="auditHasFilters" type="button" @click="clearAuditFilters" class="btn btn--sm btn--ghost" data-audit-clear>
+                            <i class="fas fa-times mr-2"></i>${t('auditLog.clear')}
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-[var(--border-primary)]" data-audit-table>
+                            <thead class="bg-[var(--bg-tertiary)]">
+                                <tr>
+                                    <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('auditLog.time')}</th>
+                                    <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('auditLog.user')}</th>
+                                    <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('auditLog.event')}</th>
+                                    <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('auditLog.recording')}</th>
+                                    <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('auditLog.address')}</th>
+                                    <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">${t('auditLog.result')}</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-[var(--bg-secondary)] divide-y divide-[var(--border-primary)]">
+                                <template v-for="row in auditEvents" :key="row.id">
+                                    <tr class="hover:bg-[var(--bg-tertiary)] cursor-pointer" @click="toggleAuditRow(row.id)"
+                                        :aria-expanded="auditOpenRow === row.id ? 'true' : 'false'" data-audit-row>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-[var(--text-muted)]">
+                                            <time :datetime="row.created_at" :title="formatDate(row.created_at)">${ formatRelativeTime(row.created_at) }</time>
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-[var(--text-primary)]">${ auditActor(row) }</td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-[var(--text-secondary)]"><code class="text-xs">${ row.event }</code></td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-[var(--text-secondary)]">${ row.recording_id != null ? '#' + row.recording_id : '' }</td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-[var(--text-secondary)]">${ row.ip || '' }</td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-[var(--text-secondary)]">
+                                            <span class="px-2 inline-flex items-center text-xs leading-5 font-semibold rounded-full" :class="auditOutcomeClass(row.outcome)">${ t('auditLog.outcomes.' + row.outcome) }</span>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="auditOpenRow === row.id" class="bg-[var(--bg-tertiary)]" data-audit-details>
+                                        <td colspan="6" class="px-4 py-3 text-sm text-[var(--text-secondary)]">
+                                            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+                                                <div class="flex gap-2"><dt class="text-[var(--text-muted)]">${t('auditLog.time')}</dt><dd>${ formatDate(row.created_at) }</dd></div>
+                                                <div class="flex gap-2"><dt class="text-[var(--text-muted)]">${t('auditLog.accessBy')}</dt><dd>${ t('auditLog.actors.' + row.actor_kind) }<span v-if="row.actor_token_id != null"> #${ row.actor_token_id }</span></dd></div>
+                                                <div v-if="row.target_user_id != null" class="flex gap-2"><dt class="text-[var(--text-muted)]">${t('auditLog.target')}</dt><dd>${ auditUserName(row.target_user_id) }</dd></div>
+                                                <div v-if="row.recording_owner_id != null" class="flex gap-2"><dt class="text-[var(--text-muted)]">${t('auditLog.owner')}</dt><dd>${ auditUserName(row.recording_owner_id) }</dd></div>
+                                                <div v-if="row.group_id != null" class="flex gap-2"><dt class="text-[var(--text-muted)]">${t('auditLog.group')}</dt><dd>#${ row.group_id }</dd></div>
+                                                <div v-for="(value, key) in (row.details || {})" :key="key" class="flex gap-2"><dt class="text-[var(--text-muted)]"><code class="text-xs">${ key }</code></dt><dd>${ auditDetailValue(value) }</dd></div>
+                                                <div v-if="row.user_agent" class="flex gap-2 sm:col-span-2"><dt class="text-[var(--text-muted)] flex-shrink-0">${t('auditLog.userAgent')}</dt><dd class="break-all">${ row.user_agent }</dd></div>
+                                            </dl>
+                                        </td>
+                                    </tr>
+                                </template>
+                                <tr v-if="auditEvents.length === 0">
+                                    <td colspan="6" class="px-4 py-4 text-center text-sm text-[var(--text-muted)]" data-audit-empty>
+                                        <span v-if="isLoadingAudit"><i class="fas fa-spinner fa-spin mr-2"></i>${ t('common.loading') }</span>
+                                        <span v-else-if="auditError">${ t('auditLog.loadFailed') }</span>
+                                        <span v-else>${ t('auditLog.empty') }</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-4 flex items-center justify-end gap-2">
+                        <button type="button" @click="loadAuditLog('newer')" :disabled="!auditHasNewer || isLoadingAudit" class="btn btn--sm btn--ghost" :class="{ 'opacity-50 cursor-not-allowed': !auditHasNewer }" data-audit-newer>
+                            <i class="fas fa-angle-left mr-2"></i>${t('auditLog.newer')}
+                        </button>
+                        <button type="button" @click="loadAuditLog('older')" :disabled="!auditHasOlder || isLoadingAudit" class="btn btn--sm btn--ghost" :class="{ 'opacity-50 cursor-not-allowed': !auditHasOlder }" data-audit-older>
+                            ${t('auditLog.older')}<i class="fas fa-angle-right ml-2"></i>
+                        </button>
                     </div>
                   </div><!-- /.tab-scroll -->
                   <div class="tab-footer"></div>
@@ -2455,6 +2620,17 @@ Summarization Instructions:
                 // Computed properties
                 // Methods
                 let userSearchTimer = null;
+                // Order of the user list. The list is paged by the server, so
+                // the server sorts it; no key means the order by id. The first
+                // click on a column sorts ascending (for "Last active": never
+                // used first, then the least recently used), the next reverses.
+                const userSort = ref({ key: null, dir: 1 });
+                const sortUserListBy = (key) => {
+                    userSort.value = userSort.value.key === key
+                        ? { key, dir: -userSort.value.dir }
+                        : { key, dir: 1 };
+                    loadUsers(1);
+                };
                 const loadUsers = async (page) => {
                     const targetPage = (page === undefined || page === null) ? userPage.value : page;
                     isLoadingUsers.value = true;
@@ -2463,6 +2639,10 @@ Summarization Instructions:
                         params.set('page', targetPage);
                         params.set('per_page', userPerPage.value);
                         if (userSearchQuery.value) params.set('search', userSearchQuery.value);
+                        if (userSort.value.key) {
+                            params.set('sort', userSort.value.key);
+                            params.set('order', userSort.value.dir > 0 ? 'asc' : 'desc');
+                        }
                         const response = await fetch('/admin/users?' + params.toString());
                         if (!response.ok) throw new Error('Failed to load users');
 
@@ -2983,6 +3163,11 @@ Summarization Instructions:
                     if (isNaN(date.getTime())) return t('adminDashboard.never');
                     return date.toLocaleDateString(window.i18n?.getIntlLocale?.()) + ' ' + date.toLocaleTimeString(window.i18n?.getIntlLocale?.());
                 };
+                // Elapsed time for the "Last active" cell ("3 hours ago"). The
+                // full date and time stay available in the cell's title. Templates
+                // cannot reach window.i18n (Vue resolves names against the
+                // component), so the i18n call is exposed through setup.
+                const formatRelativeTime = (dateString) => i18nInstance.formatRelativeTime(dateString);
                 
                 // Settings that hold the mode of a named permission (#576)
                 const permissionModes = ['admins', 'selected', 'everyone'];
@@ -4226,6 +4411,152 @@ Summarization Instructions:
                     }
                 });
                 
+                // --- Audit log tab -------------------------------------------------
+                // One page of /admin/audit-log at a time, newest first. The
+                // filters are applied on the server; "Older" and "Newer" page by
+                // the id of the last and the first row shown.
+                const auditGroups = ['auth', 'access', 'change', 'share', 'admin', 'incognito', 'audit'];
+                const auditOutcomes = ['success', 'denied', 'failed'];
+                const auditActorKinds = ['session', 'api_token', 'sso_token', 'public_link', 'system', 'anonymous'];
+                const emptyAuditFilters = () => ({ from: '', to: '', user: '', group: '', recording_id: '', outcome: '', actor_kind: '' });
+                const auditFilters = ref(emptyAuditFilters());
+                const auditEvents = ref([]);
+                const auditUsers = ref({});
+                const auditHasOlder = ref(false);
+                const auditHasNewer = ref(false);
+                const auditOpenRow = ref(null);
+                const auditNotice = ref(false);
+                const auditEnabled = ref(true);
+                const auditLoaded = ref(false);
+                const auditError = ref(false);
+                const auditRetentionDays = ref(365);
+                const auditStoreIp = ref('full');
+                const isLoadingAudit = ref(false);
+                let auditFilterTimer = null;
+                let auditRequest = 0;
+
+                const auditHasFilters = computed(() => Object.values(auditFilters.value).some(v => v !== '' && v != null));
+
+                // The filters as query parameters. A date is a day in the
+                // browser's time zone, sent as its start and end in UTC.
+                const auditFilterParams = () => {
+                    const f = auditFilters.value;
+                    const params = new URLSearchParams();
+                    const day = (value, add) => {
+                        const parts = String(value).split('-').map(Number);
+                        if (parts.length !== 3 || parts.some(isNaN)) return null;
+                        return new Date(parts[0], parts[1] - 1, parts[2] + add).toISOString();
+                    };
+                    const from = f.from ? day(f.from, 0) : null;
+                    const to = f.to ? day(f.to, 1) : null;
+                    if (from) params.set('from', from);
+                    if (to) params.set('to', to);
+                    if (f.user) params.set('user', f.user);
+                    if (f.group) params.set('group', f.group);
+                    if (f.recording_id !== '' && f.recording_id != null) params.set('recording_id', f.recording_id);
+                    if (f.outcome) params.set('outcome', f.outcome);
+                    if (f.actor_kind) params.set('actor_kind', f.actor_kind);
+                    return params;
+                };
+
+                const auditExportUrl = (format) => {
+                    const params = auditFilterParams();
+                    params.set('format', format);
+                    return '/admin/audit-log/export?' + params.toString();
+                };
+
+                const loadAuditLog = async (direction) => {
+                    const params = auditFilterParams();
+                    const rows = auditEvents.value;
+                    if (direction === 'older' && rows.length) params.set('before_id', rows[rows.length - 1].id);
+                    if (direction === 'newer' && rows.length) params.set('after_id', rows[0].id);
+                    const request = ++auditRequest;
+                    isLoadingAudit.value = true;
+                    try {
+                        const response = await fetch('/admin/audit-log?' + params.toString());
+                        if (!response.ok) throw new Error('Failed to load the audit log');
+                        const data = await response.json();
+                        if (request !== auditRequest) return;
+                        // "Newer" from the newest page answers with no rows: keep the page.
+                        if (direction === 'newer' && (!data.events || !data.events.length)) {
+                            auditHasNewer.value = false;
+                            return;
+                        }
+                        auditEvents.value = data.events || [];
+                        auditUsers.value = data.users || {};
+                        auditHasOlder.value = !!data.has_older;
+                        auditHasNewer.value = !!data.has_newer;
+                        auditNotice.value = !!data.notice;
+                        auditEnabled.value = data.enabled !== false;
+                        auditRetentionDays.value = data.retention_days;
+                        auditStoreIp.value = data.store_ip;
+                        auditOpenRow.value = null;
+                        auditError.value = false;
+                        auditLoaded.value = true;
+                    } catch (error) {
+                        console.error('Error loading the audit log:', error);
+                        if (request === auditRequest) {
+                            auditEvents.value = [];
+                            auditError.value = true;
+                        }
+                    } finally {
+                        if (request === auditRequest) isLoadingAudit.value = false;
+                    }
+                };
+
+                watch(auditFilters, () => {
+                    if (activeTab.value !== 'audit') return;
+                    if (auditFilterTimer) clearTimeout(auditFilterTimer);
+                    auditFilterTimer = setTimeout(() => { loadAuditLog(); }, 300);
+                }, { deep: true });
+
+                const clearAuditFilters = () => { auditFilters.value = emptyAuditFilters(); };
+                const toggleAuditRow = (id) => { auditOpenRow.value = auditOpenRow.value === id ? null : id; };
+                const auditUserName = (id) => auditUsers.value[String(id)] || t('auditLog.deletedUser', { id });
+                const auditActor = (row) => {
+                    if (row.actor_user_id != null) return auditUserName(row.actor_user_id);
+                    return t('auditLog.actors.' + row.actor_kind);
+                };
+                const auditOutcomeClass = (outcome) => ({
+                    success: 'bg-[var(--bg-success-light)] text-[var(--text-success-strong)]',
+                    denied: 'bg-[var(--bg-danger-light)] text-[var(--text-danger-strong)]',
+                    failed: 'bg-[var(--bg-warn-light)] text-[var(--text-warn-strong)]',
+                }[outcome] || 'bg-[var(--bg-pending-light)] text-[var(--text-pending-strong)]');
+                const auditDetailValue = (value) => {
+                    if (value === true) return t('common.yes');
+                    if (value === false) return t('common.no');
+                    return Array.isArray(value) ? value.join(', ') : String(value);
+                };
+                const auditNoticeText = computed(() => {
+                    const days = auditRetentionDays.value;
+                    const kept = days > 0 ? t('auditLog.noticeDays', { days }) : t('auditLog.noticeNoLimit');
+                    const address = auditStoreIp.value === 'off' ? t('auditLog.noticeNoAddress') : t('auditLog.noticeAddress');
+                    return [t('auditLog.notice'), address, kept, t('auditLog.noticeSettings')].join(' ');
+                });
+
+                // The notice is shown once per installation: dismissing it saves a setting.
+                const dismissAuditNotice = async () => {
+                    auditNotice.value = false;
+                    try {
+                        const csrfToken = document.querySelector('meta[name=csrf-token]')?.getAttribute('content');
+                        const headers = { 'Content-Type': 'application/json' };
+                        if (csrfToken) headers['X-CSRFToken'] = csrfToken;
+                        await fetch('/admin/settings', {
+                            method: 'POST',
+                            headers,
+                            body: JSON.stringify({ key: 'audit_log_notice_dismissed', value: 'true', setting_type: 'boolean' })
+                        });
+                    } catch (error) {
+                        console.error('Error dismissing the audit log notice:', error);
+                    }
+                };
+
+                // "View activity" on a user row: the tab, filtered to that account.
+                const viewUserActivity = (user) => {
+                    auditFilters.value = { ...emptyAuditFilters(), user: String(user.id) };
+                    activeTab.value = 'audit';
+                };
+
                 // Watch for tab changes to reload data
                 watch(activeTab, async (newTab) => {
                     // Only allow full admins to load admin-specific data
@@ -4245,6 +4576,9 @@ Summarization Instructions:
                             loadDefaultPrompt();
                         } else if (newTab === 'vectorstore' && inquireModeEnabled.value) {
                             loadInquireStatus();
+                        } else if (newTab === 'audit') {
+                            if (auditFilterTimer) clearTimeout(auditFilterTimer);
+                            loadAuditLog();
                         }
                     }
 
@@ -4274,6 +4608,11 @@ Summarization Instructions:
                     displayedSettings,
                     isLoadingUsers,
                     isLoadingSettings,
+                    auditGroups, auditOutcomes, auditActorKinds, auditFilters, auditEvents,
+                    auditHasOlder, auditHasNewer, auditOpenRow, auditNotice, auditNoticeText,
+                    auditEnabled, auditLoaded, auditError, isLoadingAudit, auditHasFilters,
+                    auditExportUrl, loadAuditLog, clearAuditFilters, toggleAuditRow, auditUserName,
+                    auditActor, auditOutcomeClass, auditDetailValue, dismissAuditNotice, viewUserActivity,
                     userSearchQuery,
                     userPage,
                     userPerPage,
@@ -4374,6 +4713,9 @@ Summarization Instructions:
                     saveSettingValue,
                     updateSetting,
                     formatDate,
+                    formatRelativeTime,
+                    userSort,
+                    sortUserListBy,
                     parseInstant,
                     getSettingDescription,
                     permissionModes,

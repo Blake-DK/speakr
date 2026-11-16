@@ -19,6 +19,7 @@ from datetime import datetime
 import mimetypes
 
 from src.utils.ffmpeg_utils import convert_to_mp3, decode_ffmpeg_output, FFmpegError, FFmpegNotFoundError
+from src.utils.log_filters import loggable_error, loggable_path
 
 if TYPE_CHECKING:
     from src.services.transcription.base import ConnectorSpecifications
@@ -309,7 +310,7 @@ class AudioChunkingService:
                 return False
 
         except OSError:
-            logger.error(f"Could not get file size for {file_path}")
+            logger.error(f"Could not get file size for {loggable_path(file_path)}")
             return False
 
     def needs_chunking_with_config(
@@ -357,7 +358,7 @@ class AudioChunkingService:
                 '-of', 'default=noprint_wrappers=1:nokey=1', file_path
             ], capture_output=True, check=True, timeout=_SUBPROCESS_TIMEOUT_SECONDS)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
-            logger.error(f"Error getting audio duration for {file_path}: {e}")
+            logger.error(f"Error getting audio duration for {loggable_path(file_path)}: {loggable_error(e, file_path)}")
             return None
 
         raw = decode_ffmpeg_output(result.stdout).strip()
@@ -368,10 +369,10 @@ class AudioChunkingService:
         from src.utils.ffprobe import _get_duration_from_packets
         duration = _get_duration_from_packets(file_path, timeout=_SUBPROCESS_TIMEOUT_SECONDS)
         if duration and duration > 0:
-            logger.info(f"No container duration for {file_path} ({raw or 'empty'}); "
+            logger.info(f"No container duration for {loggable_path(file_path)} ({raw or 'empty'}); "
                         f"measured {duration:.2f}s from packet timestamps")
             return duration
-        logger.info(f"No duration available for {file_path} (container reports {raw or 'nothing'})")
+        logger.info(f"No duration available for {loggable_path(file_path)} (container reports {raw or 'nothing'})")
         return None
     
     def convert_to_mp3_and_get_info(self, file_path: str, temp_dir: str) -> Tuple[str, float, float]:
@@ -398,10 +399,10 @@ class AudioChunkingService:
             # Check if input is already MP3 - skip conversion
             file_ext = os.path.splitext(file_path)[1].lower()
             if file_ext == '.mp3':
-                logger.info(f"Input {file_path} is already MP3, skipping conversion")
+                logger.info(f"Input {loggable_path(file_path)} is already MP3, skipping conversion")
                 shutil.copy2(file_path, mp3_path)
             else:
-                logger.info(f"Converting {file_path} to 128kbps MP3 format for chunking...")
+                logger.info(f"Converting {loggable_path(file_path)} to 128kbps MP3 format for chunking...")
                 # Use centralized FFmpeg utility for conversion
                 convert_to_mp3(file_path, mp3_path)
 
@@ -425,7 +426,7 @@ class AudioChunkingService:
                 debug_filename = os.path.basename(mp3_path).replace('_converted', '_converted_debug')
                 debug_path = os.path.join(debug_dir, debug_filename)
                 shutil.copy2(mp3_path, debug_path)
-                logger.info(f"Debug: Preserved converted file as {debug_path}")
+                logger.info(f"Debug: Preserved converted file as {loggable_path(debug_path)} in {debug_dir}")
 
             return mp3_path, mp3_duration, mp3_size
 
@@ -603,7 +604,7 @@ class AudioChunkingService:
             current_start = 0
             chunk_index = 0
             
-            logger.info(f"Splitting {file_path} into {num_chunks} chunks of ~{chunk_duration:.1f}s with {self.overlap_seconds}s overlap")
+            logger.info(f"Splitting {loggable_path(file_path)} into {num_chunks} chunks of ~{chunk_duration:.1f}s with {self.overlap_seconds}s overlap")
             
             for chunk_index in range(num_chunks):
                 # Calculate start position for this chunk
@@ -640,7 +641,7 @@ class AudioChunkingService:
                     logger.error(f"ffmpeg timed out extracting chunk {chunk_index} after {_SUBPROCESS_TIMEOUT_SECONDS}s")
                     continue
                 if result.returncode != 0:
-                    logger.error(f"ffmpeg failed for chunk {chunk_index}: {decode_ffmpeg_output(result.stderr)}")
+                    logger.error(f"ffmpeg failed for chunk {chunk_index}: {loggable_error(decode_ffmpeg_output(result.stderr), mp3_path, chunk_path)}")
                     continue
                 
                 # Verify chunk was created and get its size
@@ -674,15 +675,15 @@ class AudioChunkingService:
                         debug_filename = os.path.basename(chunk_path).replace('.mp3', '_debug.mp3')
                         debug_path = os.path.join(debug_dir, debug_filename)
                         shutil.copy2(chunk_path, debug_path)
-                        logger.info(f"Debug: Preserved chunk as {debug_path}")
+                        logger.info(f"Debug: Preserved chunk {chunk_index} as {loggable_path(debug_path)} in {debug_dir}")
                 else:
-                    logger.error(f"Chunk file not created: {chunk_path}")
+                    logger.error(f"Chunk file {chunk_index} not created: {loggable_path(chunk_path)}")
             
-            logger.info(f"Created {len(chunks)} chunks for {file_path}")
+            logger.info(f"Created {len(chunks)} chunks for {loggable_path(file_path)}")
             return chunks
             
         except Exception as e:
-            logger.error(f"Error creating chunks for {file_path}: {e}")
+            logger.error(f"Error creating chunks for {loggable_path(file_path)}: {loggable_error(e, file_path)}")
             # Clean up any partial chunks
             for chunk in chunks:
                 try:
@@ -998,7 +999,7 @@ class AudioChunkingService:
                     os.remove(chunk_path)
                     logger.debug(f"Cleaned up chunk file: {chunk_path}")
             except Exception as e:
-                logger.warning(f"Error cleaning up chunk {chunk.get('filename', 'unknown')}: {e}")
+                logger.warning(f"Error cleaning up chunk {chunk.get('index', 'unknown')}: {loggable_error(e, chunk.get('path'))}")
         
         # Clean up temporary MP3 file if provided
         if temp_mp3_path and os.path.exists(temp_mp3_path):
@@ -1165,7 +1166,7 @@ def extract_speaker_samples(
                 logger.error(f"ffmpeg timed out extracting sample for speaker {speaker} after {_SUBPROCESS_TIMEOUT_SECONDS}s")
                 continue
             if result.returncode != 0:
-                logger.error(f"Failed to extract sample for speaker {speaker}: {decode_ffmpeg_output(result.stderr)}")
+                logger.error(f"Failed to extract sample for speaker {speaker}: {loggable_error(decode_ffmpeg_output(result.stderr), audio_path, sample_path)}")
                 continue
 
             if os.path.exists(sample_path) and os.path.getsize(sample_path) > 0:

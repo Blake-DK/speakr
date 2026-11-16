@@ -42,7 +42,7 @@ You can guide diarization with a speaker count. The upload, recording, and repro
 
 **Self-Hosted Diarization with OpenASR**: OpenASR runs locally with an OpenAI-compatible API, diarizes with an exact speaker count, and, on servers from openasr#379 onward, returns speaker embeddings when `ASR_RETURN_SPEAKER_EMBEDDINGS=true`, so voice profiles work with it the same way they do with WhisperX.
 
-**Cloud Diarization with OpenAI**: When using OpenAI's `gpt-4o-transcribe-diarize` model, speaker diarization is also available with speakers labeled as A, B, C, etc. For longer files (over ~23 minutes) that require chunking, the system maintains speaker identity across chunks using audio reference samples. This technique supports **up to 4 speakers** - recordings with more speakers may have inconsistent labels across different sections of the transcript.
+**Cloud Diarization with OpenAI**: When using OpenAI's `gpt-4o-transcribe-diarize` model, speaker diarization is also available. The letters returned by the service (A, B, C) are stored as `SPEAKER_00`, `SPEAKER_01`, `SPEAKER_02`. For longer files (over ~23 minutes) that require chunking, the system maintains speaker identity across chunks using audio reference samples. This technique supports **up to 4 speakers** - recordings with more speakers may have inconsistent labels across different sections of the transcript.
 
 **Cloud Diarization with Mistral**: Mistral's Voxtral model provides built-in speaker diarization and automatic language detection. It handles chunking internally, so long files work without extra configuration.
 
@@ -141,7 +141,7 @@ Several safeguards keep profiles clean. A speaker with less than 15 seconds of s
 
 Match thresholds calibrate themselves: once a voice space holds enough samples, Speakr compares each sample with the same person's other samples and with other people's, and places the threshold between the two distributions. Suggestions and the low / medium / high auto-labelling settings are derived from it; until then the fixed defaults apply. The admin **Voice embedding compatibility** card shows the threshold in use.
 
-**In-App Notifications**: The user menu carries an unread badge and a panel listing anything that needs attention, such as a change in the transcription backend's voice embedding model. Notices that describe a condition rather than an event clear themselves when the condition ends, so restoring a backend removes the warning without anyone dismissing it. Notification text is localized like the rest of the interface.
+**In-App Notifications**: The user menu has an unread badge and a panel listing anything that needs attention, such as a change in the transcription backend's voice embedding model. Notices that describe a condition rather than an event clear themselves when the condition ends, so restoring a backend removes the warning without anyone dismissing it. Notification text is localized like the rest of the interface.
 
 **Email Notifications**: Each user can opt in to an email when one of their recordings finishes transcribing, or fails, from their [account preferences](user-guide/settings.md#notifications). It uses the same SMTP configuration as email verification and password resets, and is off by default. Set `APP_BASE_URL` so the message can link back to the recording. See [Email Setup](admin-guide/email-setup.md#processing-notifications).
 
@@ -209,6 +209,14 @@ Export recordings in multiple formats for different purposes. Generate Word docu
 
 Track all your shared recordings from a central location. See what's been shared, when, and with what permissions. Modify share settings without generating new links, or instantly revoke access when shares are no longer appropriate. View shared recordings alongside your own content with clear visual indicators showing ownership and group affiliation.
 
+### Audit Log
+
+Sign-ins, access to recordings, changes, shares and administrative actions are listed in the Audit log tab for site admins, with filters and export as CSV or JSONL. Titles, file names and transcript text are not recorded. See the [audit log page](admin-guide/audit-log.md) and [Privacy and regulated data](admin-guide/privacy.md).
+
+### Keyboard Shortcuts
+
+On the desktop, the recording list, the open recording and the player can be used from the keyboard. The keys are listed with `?`. See [Keyboard shortcuts](user-guide/keyboard-shortcuts.md).
+
 ## API Access
 
 ### Personal Access Tokens
@@ -271,7 +279,7 @@ Fine-tune transcription for specific scenarios with custom ASR settings. See [AS
 
 ### Progressive Web App
 
-Install Speakr as a progressive web app for a native-like experience on any device. The PWA works offline for viewing existing recordings and syncs when connectivity returns. Mobile-optimized interfaces ensure smooth operation on phones and tablets.
+Install Speakr as a progressive web app for a native-like experience on any device. The application files are kept in the browser for faster loading, and a "You are offline" page is shown when the server cannot be reached; recordings are always loaded from the server. Mobile-optimized interfaces ensure smooth operation on phones and tablets.
 
 ### Dark Mode
 
@@ -298,11 +306,11 @@ Adjust audio playback speed from 0.5x to 3x on all audio/video players throughou
 
 ### Incognito Mode
 
-Process transcriptions without saving anything to the database. When incognito mode is enabled (`ENABLE_INCOGNITO_MODE=true`), users can upload and transcribe audio files with the assurance that the audio is deleted immediately after processing and no record is stored in the database. Close the tab and it's gone - perfect for sensitive content that shouldn't persist.
+Process transcriptions without saving anything to the database. When incognito mode is enabled (`ENABLE_INCOGNITO_MODE=true`), users can upload and transcribe audio files with the assurance that the audio is deleted immediately after processing and no record is stored in the database. Close the tab and it's gone - perfect for sensitive content that shouldn't persist. The summary, the notes, the transcript and the chat of an incognito recording can be copied. They cannot be downloaded as files, because the download routes need a stored recording, so no download buttons are shown for one.
 
 ### Responsive Design
 
-Access Speakr from any device with interfaces that adapt to screen size. Desktop users get a full three-panel layout with simultaneous access to recordings, transcripts, and chat. Mobile users receive a streamlined interface optimized for touch interaction and smaller screens.
+Access Speakr from any device with interfaces that adapt to screen size. Desktop users get a full three-panel layout with simultaneous access to recordings, transcripts, and chat. On a phone, the recording list and a recording are separate screens: one top bar, four tabs, a slim player strip and labeled sheets for actions and details. See [Phone Layout](user-guide/pwa.md#phone-layout).
 
 ## Administrative Control
 

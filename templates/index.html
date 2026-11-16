@@ -66,6 +66,10 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/css/fontawesome.min.css', v=app_version) }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v=app_version) }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/primitives.css', v=app_version) }}">
+    <!-- The phone layout of the recording page and the recording list (below 768px) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/phone.css', v=app_version) }}">
+    <!-- The processing queue: the indicator and the panel -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/queue.css', v=app_version) }}">
     <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/icon-32x32.png') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/icon-16x16.png') }}">
@@ -139,7 +143,8 @@
              chrome. -->
         {% include 'components/upload-view.html' %}
 
-        <!-- Upload Progress Popup -->
+        <!-- The processing queue over the page (the indicator and the docked
+             panel are in the sidebar, the header and the phone layout) -->
         {% with ui_slot = 'status-area' %}{% include 'themes/slot.html' %}{% endwith %}
 
         <!-- Modals -->
@@ -191,6 +196,8 @@
     <!-- i18n System -->
     {% include 'includes/i18n_bootstrap.html' %}
     <script src="{{ url_for('static', filename='js/i18n.js', v=app_version) }}"></script>
+    <!-- Service worker registration, and what is removed from the browser at sign-out -->
+    <script src="{{ url_for('static', filename='js/service-worker-client.js', v=app_version) }}" data-register></script>
     <!-- The app's own confirm, message and input dialogs (window.confirmDialog, alertDialog, promptDialog) -->
     <script src="{{ url_for('static', filename='js/app-dialog.js', v=app_version) }}"></script>
 

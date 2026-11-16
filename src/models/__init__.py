@@ -31,7 +31,7 @@ from .export_template import ExportTemplate
 from .initial_prompt_template import InitialPromptTemplate
 from .inquire import InquireSession
 from .system import SystemSetting
-from .audit import ShareAuditLog
+from .audit import AuditEvent, ShareAuditLog
 from .push_subscription import PushSubscription
 from .notification import (
     Notification,
@@ -41,6 +41,7 @@ from .notification import (
 from .processing_job import ProcessingJob
 from .recording_session import RecordingSession, RECORDING_SESSION_KINDS, RECORDING_SESSION_STATUSES
 from .upload_join import UploadJoinPart
+from .client_upload import ClientUpload
 from .token_usage import TokenUsage
 from .transcription_usage import TranscriptionUsage
 from .webhook import (
@@ -71,6 +72,7 @@ __all__ = [
     'InternalShare',
     'SharedRecordingState',
     'ShareAuditLog',
+    'AuditEvent',
     # Organization models
     'Group',
     'GroupMembership',
@@ -93,6 +95,7 @@ __all__ = [
     'ProcessingJob',
     'RecordingSession',
     'UploadJoinPart',
+    'ClientUpload',
     'RECORDING_SESSION_KINDS',
     'RECORDING_SESSION_STATUSES',
     'TokenUsage',

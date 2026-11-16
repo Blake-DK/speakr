@@ -158,6 +158,16 @@ root_logger.handlers.clear()
 root_logger.setLevel(log_level)
 root_logger.addHandler(handler)
 
+# An incognito request logs metadata only, at every level: the record factory
+# replaces every other record created while such a request runs.
+from src.utils.incognito_logging import install as _install_incognito_logging
+_install_incognito_logging()
+
+# httpx logs each request URL at INFO: without its query string, which holds
+# the initial prompt and the hotwords of a transcription request.
+from src.utils.log_filters import install as _install_log_filters
+_install_log_filters()
+
 # Silence noisy markdown extension debug logs
 markdown_logger = logging.getLogger('MARKDOWN')
 markdown_logger.setLevel(logging.WARNING)
@@ -695,6 +705,26 @@ app.config['WTF_CSRF_CHECK_DEFAULT'] = False
 
 
 @app.before_request
+def record_last_active():
+    """Note the time of this use of the signed-in account (admin user list).
+
+    A request of an account counts, from a browser session or with an API
+    token, unless its route is one that an open tab requests on a timer
+    (src/services/last_active.py holds the list). This runs before the checks
+    below, so a request that one of them refuses (a CSRF rejection, a token
+    scope the route does not allow) still counts. The write is made outside
+    the session of the request, waits a fraction of a second at most and
+    swallows its errors, so it can neither delay nor fail the request.
+    """
+    from src.services.last_active import counts_as_activity, record_activity
+    if not counts_as_activity(request.endpoint):
+        return
+    if not current_user.is_authenticated:
+        return
+    record_activity(current_user)
+
+
+@app.before_request
 def refuse_query_token_writes():
     """?token= is deprecated and read-only (#500).
 
@@ -705,7 +735,13 @@ def refuse_query_token_writes():
     """
     if not request.endpoint or request.endpoint == 'static' or session.get('_user_id'):
         return
-    from src.utils.token_auth import query_token_refused
+    from src.utils.token_auth import query_token_disabled, query_token_refused
+    if query_token_disabled():
+        # api_query_tokens_enabled is off (privacy review A4).
+        resp = jsonify(api_error('query_token_disabled'))
+        resp.status_code = 401
+        resp.headers['WWW-Authenticate'] = 'Bearer error="invalid_request"'
+        return resp
     if query_token_refused():
         resp = jsonify(api_error('query_token_read_only'))
         resp.status_code = 401
@@ -865,8 +901,9 @@ def handle_csrf_error(error):
         # sign anyone out.
         if request.endpoint == 'auth.logout' and same_origin:
             from flask_login import logout_user
+            from src.api.auth import signed_out_redirect
             logout_user()
-            return redirect(url_for('auth.login'))
+            return signed_out_redirect()
         # Any other form with an expired or missing token: back to the page
         # it was sent from, with a message, in place of a bare 400 page.
         if retryable and same_origin and request.referrer:
@@ -1154,6 +1191,8 @@ client, chunking_service, version = initialize_config(app)
 init_auth_extensions(bcrypt, csrf, limiter)
 init_tokens_helpers(bcrypt, csrf, limiter)
 init_shares_helpers(has_recording_access, limiter)
+from src.services import audit as _audit_log
+_audit_log.init_access_check(has_recording_access)
 init_recordings_helpers(has_recording_access=has_recording_access, editable_recording_ids=editable_recording_ids, get_user_recording_status=get_user_recording_status, set_user_recording_status=set_user_recording_status, enrich_recording_dict_with_user_status=enrich_recording_dict_with_user_status, bcrypt=bcrypt, csrf=csrf, limiter=limiter, chunking_service=chunking_service)
 init_tags_helpers(has_recording_access=has_recording_access, bcrypt=bcrypt, csrf=csrf, limiter=limiter)
 init_folders_helpers(has_recording_access=has_recording_access, bcrypt=bcrypt, csrf=csrf, limiter=limiter)
@@ -1221,6 +1260,19 @@ from src.config.startup import initialize_file_monitor, get_file_monitor_functio
 # Run startup tasks
 run_startup_tasks(app)
 
+# Session idle timeout, and warnings about cookies and plain-http services.
+from src.services import session_policy as _session_policy
+_session_policy.init_app(app)
+from src.config.outbound_warnings import log_plain_http_warnings as _log_plain_http_warnings
+_log_plain_http_warnings(app)
+
+# Temporary files left by an incognito request that did not end normally.
+# In every process: only entries older than incognito_temp_max_age_hours are
+# removed, so workers starting together and a request in flight are safe.
+from src.services.incognito_temp import cleanup_stale as _cleanup_incognito_temp
+with app.app_context():
+    _cleanup_incognito_temp()
+
 # --- No-Crawl System: HTTP Headers ---
 @app.after_request
 def add_no_crawl_headers(response):
@@ -1269,6 +1321,21 @@ def add_security_headers(response):
 def robots_txt():
     """Serve robots.txt to instruct crawlers not to index the site."""
     return send_file(os.path.join(app.static_folder, 'robots.txt'), mimetype='text/plain')
+
+# --- Service worker -----------------------------------------------------------
+@app.route('/sw.js')
+def service_worker():
+    """Serve static/sw.js from the root, so that its scope is the whole app.
+
+    A worker's widest scope is the directory of its URL: served from
+    /static/sw.js it controlled no page. No Service-Worker-Allowed header is
+    needed for a file at the root. The browser's update check must see a new
+    release at once, so the file is revalidated on every request.
+    """
+    response = send_file(os.path.join(app.static_folder, 'sw.js'), mimetype='text/javascript', max_age=0)
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
+
 
 if __name__ == '__main__':
     import argparse

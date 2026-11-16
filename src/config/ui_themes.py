@@ -49,11 +49,10 @@ SLOTS = (
     'sidebar-row',             # one row of the sidebar recordings list
     'header-actions',          # the recording's action buttons in the top header (desktop)
     'detail-meta',             # the folder/tag/metadata strip above a recording (desktop)
-    'mobile-detail-header',    # the recording header on phones
     'transcript-turn',         # one speaker turn of the simple transcript (desktop)
     'transcript-turn-mobile',  # one speaker turn of the simple transcript (phones)
     'inquire-filters',         # the filter column of the Inquire page
-    'status-area',             # the processing queue popup of the main page
+    'status-area',             # the processing queue over the main page: float panel and phone sheet
 )
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

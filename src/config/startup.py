@@ -125,7 +125,8 @@ def scheduled_deletion_due():
 
 
 def run_daily_maintenance(app):
-    """The work of one daily run: retention auto-deletion, then the ownerless cleanup.
+    """The work of one daily run: retention auto-deletion, the ownerless
+    cleanup, then the pruning of the audit log.
 
     Auto-deletion deletes only when it is enabled. The cleanup of recordings
     without an owner (#572) is integrity, not retention, and runs every
@@ -148,6 +149,18 @@ def run_daily_maintenance(app):
     with app.app_context():
         from src.services.ownerless_cleanup import run_ownerless_cleanup
         run_ownerless_cleanup()
+
+    # Audit log rows past audit_log_retention_days. Here and not in the hourly
+    # cleanup loop, because that loop can be turned off and this thread
+    # always starts.
+    try:
+        with app.app_context():
+            from src.services.audit import prune_audit_events
+            pruned = prune_audit_events()
+            if pruned:
+                app.logger.info(f"Pruned {pruned} audit log row(s)")
+    except Exception as e:
+        app.logger.error(f"Error while pruning the audit log: {type(e).__name__}")
 
 
 def initialize_auto_deletion_scheduler(app):
@@ -309,6 +322,16 @@ def initialize_recording_session_cleanup(app):
                     pruned = prune_tombstones()
                 if pruned:
                     app.logger.info(f"Pruned {pruned} recording tombstone(s)")
+                # Temporary files left by an incognito request that did not end normally.
+                with app.app_context():
+                    from src.services.incognito_temp import cleanup_stale
+                    cleanup_stale()
+                # Webhook delivery records past webhook_delivery_retention_days.
+                with app.app_context():
+                    from src.services.webhook_dispatch import prune_deliveries
+                    pruned_deliveries = prune_deliveries()
+                if pruned_deliveries:
+                    app.logger.info(f"Pruned {pruned_deliveries} webhook delivery record(s)")
             except Exception as e:
                 app.logger.error(f"Recording-session cleanup error: {e}", exc_info=True)
                 # Don't tight-loop on failure

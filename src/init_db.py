@@ -124,6 +124,29 @@ def _remove_orphaned_speaker_rows(engine, app):
                         f"and {samples} orphaned voice sample(s)")
 
 
+def _clear_ended_session_text(engine, app):
+    """Clear the text of the user in recording sessions that have ended.
+
+    finalize_metadata holds the title and notes typed when a browser
+    recording was finished, upload_filename the file name of an upload in
+    slices. Both stayed in the row after the session ended and after its
+    recording was deleted. Cleared here: sessions that are finalized, aborted
+    or expired, failed uploads in slices, and failed sessions whose recording
+    no longer exists. A failed recorder session whose recording exists keeps
+    its metadata, which a retry of the stitch job reads. One statement, and
+    a second run finds nothing to change.
+    """
+    with engine.begin() as conn:
+        cleared = conn.execute(text(
+            "UPDATE recording_session SET finalize_metadata = NULL, upload_filename = NULL "
+            "WHERE (finalize_metadata IS NOT NULL OR upload_filename IS NOT NULL) "
+            "AND (status IN ('finalized', 'aborted', 'expired') "
+            "OR (status = 'failed' AND (kind = 'sliced_upload' OR finalized_recording_id IS NULL "
+            "OR finalized_recording_id NOT IN (SELECT id FROM recording))))")).rowcount
+    if cleared:
+        app.logger.info(f"Cleared the title, notes or file name in {cleared} ended recording session(s)")
+
+
 def _clear_stale_session_links(engine, app):
     """Clear recording-session links to recordings that no longer exist.
 
@@ -322,6 +345,11 @@ def _run_migrations(app, engine):
             app.logger.info("Added sso_provider column to user table")
         if add_column_if_not_exists(engine, 'user', 'sso_subject', 'VARCHAR(255)'):
             app.logger.info("Added sso_subject column to user table")
+        # Time of the last use of the account, for the admin "Last active"
+        # column (src/services/last_active.py). NULL for an account that was
+        # not used since the upgrade; there is nothing to backfill it from.
+        if add_column_if_not_exists(engine, 'user', 'last_seen_at', 'DATETIME'):
+            app.logger.info("Added last_seen_at column to user table")
         
         # SSO users authenticate against their provider and never hold a local
         # password, so the column has to accept NULL.
@@ -483,6 +511,13 @@ def _run_migrations(app, engine):
             app.logger.info("Added progress_done column to processing_job table")
         if add_column_if_not_exists(engine, 'processing_job', 'progress_total', 'INTEGER'):
             app.logger.info("Added progress_total column to processing_job table")
+        # Progress unit, pipeline step, cancel mark and the state a cancel
+        # puts back (the processing queue redesign).
+        for column, column_type in (('progress_kind', 'VARCHAR(20)'), ('stage', 'VARCHAR(30)'),
+                                    ('stage_detail', 'VARCHAR(30)'),
+                                    ('cancel_requested_at', 'DATETIME'), ('restore_state', 'TEXT')):
+            if add_column_if_not_exists(engine, 'processing_job', column, column_type):
+                app.logger.info(f"Added {column} column to processing_job table")
 
         if add_column_if_not_exists(engine, 'tag', 'group_id', 'INTEGER'):
             app.logger.info("Added group_id column to tag table")
@@ -636,6 +671,8 @@ def _run_migrations(app, engine):
             app.logger.info("Added show_timestamps_simple_view column to user table")
         if add_column_if_not_exists(engine, 'user', 'editor_autosave', 'BOOLEAN DEFAULT 0'):
             app.logger.info("Added editor_autosave column to user table")
+        if add_column_if_not_exists(engine, 'user', 'keyboard_shortcuts', 'BOOLEAN DEFAULT 1'):
+            app.logger.info("Added keyboard_shortcuts column to user table")
         if add_column_if_not_exists(engine, 'user', 'speaker_count_mode', 'VARCHAR(10)'):
             app.logger.info("Added speaker_count_mode column to user table")
         if add_column_if_not_exists(engine, 'user', 'audio_player_position', "VARCHAR(10) DEFAULT 'bottom'"):
@@ -1302,6 +1339,17 @@ def _run_migrations(app, engine):
                 SystemSetting.set_setting(key=_key, value=MODE_ADMINS, description=_desc, setting_type='string')
                 app.logger.info(f"Initialized {_key} setting")
 
+        # The one-time notice on the Audit log tab of the admin page: shown
+        # until an admin dismisses it.
+        if not SystemSetting.query.filter_by(key='audit_log_notice_dismissed').first():
+            SystemSetting.set_setting(
+                key='audit_log_notice_dismissed',
+                value='false',
+                description='Whether the notice on the Audit log tab was dismissed. The notice states what is recorded and for how long.',
+                setting_type='boolean'
+            )
+            app.logger.info("Initialized audit_log_notice_dismissed setting")
+
         # Settings that can be changed in System Settings and fall back to
         # .env. The rows have no value, so the .env value applies until an
         # admin saves one (#567).
@@ -1482,6 +1530,35 @@ def _run_migrations(app, engine):
         except Exception as e:
             db.session.rollback()
             app.logger.warning(f"Stale group share cleanup skipped, retried next start: {e}")
+
+        # Diarization labels (SPEAKER_00) were stored as saved speakers,
+        # participants and Inquire chunk speakers. Counts only in the log.
+        try:
+            from src.utils.generic_speaker_cleanup import remove_generic_speakers
+            run_once(engine, '0008_remove_generic_speaker_labels',
+                     lambda eng: remove_generic_speakers(eng, logger=app.logger), logger=app.logger)
+        except Exception as e:
+            db.session.rollback()
+            app.logger.warning(f"Diarization label cleanup skipped, retried next start: {e}")
+
+        # The rows of share_audit_log become share.internal.* rows of the
+        # audit log. The old table is left as it is for one release.
+        try:
+            from src.services.audit_import import copy_share_audit_log
+            run_once(engine, '0009_copy_share_audit_log_to_audit_event',
+                     lambda eng: copy_share_audit_log(eng, logger=app.logger), logger=app.logger)
+        except Exception as e:
+            db.session.rollback()
+            app.logger.warning(f"Copy of share_audit_log skipped, retried next start: {e}")
+
+        # Ended recording sessions kept the title and notes typed at the end
+        # of a recording, or the file name of an upload in slices.
+        try:
+            run_once(engine, '0010_clear_ended_session_text',
+                     lambda eng: _clear_ended_session_text(eng, app), logger=app.logger)
+        except Exception as e:
+            db.session.rollback()
+            app.logger.warning(f"Recording-session text cleanup skipped, retried next start: {e}")
 
     with _migration_section(app, failures, "inquire mode chunk backfill"):
         # Process existing recordings for inquire mode (chunk and embed them)

@@ -7,7 +7,7 @@ import { releasesToShow, releaseVersion } from './modules/utils/whats-new.js';
 import { useUpload } from './modules/composables/upload.js';
 import { useAudio } from './modules/composables/audio.js';
 import { useUI } from './modules/composables/ui.js';
-import { useUiTheme, currentUiTheme } from './modules/composables/ui-theme.js';
+import { useUiTheme } from './modules/composables/ui-theme.js';
 import { useModals } from './modules/composables/modals.js';
 import { useSharing } from './modules/composables/sharing.js';
 import { resolveSearchScope } from './modules/utils/share-picker.js';
@@ -29,9 +29,11 @@ import { segmentRuns } from './modules/utils/transcript-window.js';
 import { useBulkSelection } from './modules/composables/bulk-selection.js';
 import { useBulkOperations } from './modules/composables/bulk-operations.js';
 import { useFolders } from './modules/composables/folders.js';
+import { usePhoneLayout } from './modules/composables/phone-layout.js';
+import { useAppShortcuts } from './modules/composables/shortcuts.js';
 
 // Import utilities
-import { showToast } from './modules/utils/toast.js';
+import { placeToasts, showToast } from './modules/utils/toast.js';
 import { getContrastTextColor } from './modules/utils/colors.js';
 import { labelPathForFilter, parseLabelPath } from './modules/utils/label-links.js';
 import { buildVariableList } from './modules/utils/prompt-variables.js';
@@ -40,6 +42,12 @@ import {
     promptsDiffer, runVariables, saveLabel, sourceLabel,
 } from './modules/utils/regenerate-summary.js';
 import { errorTextMatches } from './modules/utils/error-patterns.js';
+import { cancelResult, clockOffsetMs, parseServerInstant as parseQueueInstant, queueFieldsFromJob, settledCancels } from './modules/utils/queue-data.js';
+import {
+    cancelNeedsConfirm, finishedAgo, formatElapsed, groupQueueItems, queueSummary as summarizeQueue,
+    rowMark, rowProgress, stageLabel, summaryParts,
+} from './modules/utils/queue-view.js';
+import { canCancelUpload } from './modules/utils/upload-cancel.js';
 import { installCloseOutside } from './modules/utils/close-outside.js';
 import { installTabsBarFit } from './modules/utils/tabs-bar-fit.js';
 import {
@@ -70,6 +78,20 @@ const parseTranscriptionError = (text) => {
             const jsonStr = text.substring(11);
             const data = JSON.parse(jsonStr);
             const _t = (key, fb) => (window.i18n && window.i18n.t) ? window.i18n.t(key) : fb;
+            // A canceled first transcription (src/services/job_cancel.py): not
+            // an error, and worded in the language of the interface
+            if (data.y === 'canceled') {
+                return {
+                    title: _t('errors.canceledTitle', data.t || 'Processing canceled'),
+                    message: _t('errors.canceledMessage', data.m || ''),
+                    guidance: _t('errors.canceledGuidance', data.g || ''),
+                    icon: data.i || 'fa-ban',
+                    type: 'canceled',
+                    level: 'info',
+                    isKnown: true,
+                    technical: ''
+                };
+            }
             return {
                 title: data.t || _t('errors.fallbackTitle', 'Error'),
                 message: stripAnsi(data.m) || _t('errors.fallbackMessage', 'Something went wrong.'),
@@ -253,25 +275,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // CSRF Token Integration with Vue.js
     const csrfToken = ref(document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'));
 
-    // Register Service Worker (non-blocking)
-    if ('serviceWorker' in navigator) {
-        // Version the registration URL so every release installs a fresh
-        // worker with its own cache namespace; otherwise a byte-identical
-        // sw.js keeps serving the previous release's cached app shell
-        // forever (issue #357).
-        const appVersion = document.querySelector('meta[name="app-version"]')?.getAttribute('content') || '';
-        const swUrl = appVersion ? `/static/sw.js?v=${encodeURIComponent(appVersion)}` : '/static/sw.js';
-        // Delay registration to not block page load
-        setTimeout(() => {
-            navigator.serviceWorker.register(swUrl)
-                .then(registration => {
-                    console.log('ServiceWorker registration successful with scope:', registration.scope);
-                })
-                .catch(error => {
-                    console.warn('ServiceWorker registration failed (non-critical):', error);
-                });
-        }, 1000);
-    }
+    // The service worker is registered by js/service-worker-client.js, which
+    // every signed-in page loads.
 
     // Escapes text placed into the help markup returned by helpCode/helpLink.
     const escapeHelpHtml = (text) => String(text)
@@ -388,7 +393,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const showColorSchemeModal = ref(false);
             const windowWidth = ref(window.innerWidth);
             const mobileTab = ref('summary');  // default landing tab post-transcription
-            const mobileMoreOpen = ref(false);  // bottom-nav More overflow sheet
             const isMetadataExpanded = ref(false);
             const expandedSection = ref('settings');  // 'notes' or 'settings' for recording view accordion
             const showSortOptions = ref(false);
@@ -407,10 +411,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const processingMessage = ref('');
             const isProcessingActive = ref(false);
             const pollInterval = ref(null);
-            // The Desk theme starts with the queue collapsed (its status bar has the queue button);
-            // every other theme starts it open, as before.
-            const progressPopupMinimized = ref(currentUiTheme(document) === 'desk');
-            const progressPopupClosed = ref(false);
+            // The panel of the processing queue starts minimized: the page shows
+            // its one-line indicator. An upload or a recording that starts
+            // opens the panel (composables/upload.js, audio.js).
+            const progressPopupMinimized = ref(true);
             const maxFileSizeMB = ref(250);
             const chunkingEnabled = ref(true);
             const chunkingMode = ref('size');
@@ -1846,16 +1850,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const hasRecordingStats = computed(() =>
                 !!recordingStats.value && recordingStats.value.speakerRows.length > 0
             );
-            // True when the mobile bottom nav needs a More overflow:
-            // either Events or Stats is available alongside Notes.
-            // Otherwise the bar keeps Notes as a direct 4th tab.
-            const hasMobileMoreOverflow = computed(() =>
-                hasRecordingStats.value
-                || (selectedRecording.value
-                    && Array.isArray(selectedRecording.value.events)
-                    && selectedRecording.value.events.length > 0)
-            );
-
             // Aggregate `{{name}}` variables across the currently selected
             // tags / folder / user / admin prompt chain. The pure helpers
             // live in modules/utils/prompt-variables.js so they can be unit
@@ -1974,14 +1968,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 // UI
                 browser, isSidebarCollapsed, searchTipsExpanded, isUserMenuOpen, showHeaderFolderMenu, showHeaderReprocessMenu, showHeaderMoreMenu, tokenBudget, isDarkMode,
-                currentColorScheme, showColorSchemeModal, windowWidth, mobileTab, mobileMoreOpen, isMetadataExpanded, expandedSection,
+                currentColorScheme, showColorSchemeModal, windowWidth, mobileTab, isMetadataExpanded, expandedSection,
                 showSortOptions, currentLanguage, currentLanguageName, availableLanguages, showLanguageMenu,
                 colorSchemes, isMobileScreen, isMobileDevice,
-                summaryWordCount, notesWordCount, recordingStats, hasRecordingStats, hasMobileMoreOverflow,
+                summaryWordCount, notesWordCount, recordingStats, hasRecordingStats,
 
                 // Upload
                 uploadQueue, allJobs, currentlyProcessingFile, processingProgress, processingMessage,
-                isProcessingActive, pollInterval, progressPopupMinimized, progressPopupClosed,
+                isProcessingActive, pollInterval, progressPopupMinimized,
                 maxFileSizeMB, chunkingEnabled, chunkingMode, chunkingLimit, chunkingLimitDisplay,
                 maxConcurrentUploads, recordingDisclaimer, showRecordingDisclaimerModal, pendingRecordingMode,
                 uploadDisclaimer, showUploadDisclaimerModal,
@@ -2948,6 +2942,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             const speakersComposable = useSpeakers(state, utils, processedTranscription);
             const speakerModalComposable = useSpeakerModal(state, utils);
 
+            // The phone layout: sheets, the list as a screen, the details line,
+            // the player strip and the composer (templates/components/phone/).
+            const phoneLayoutComposable = usePhoneLayout({
+                isMobile: uiComposable.isMobile, isSidebarCollapsed, currentView, selectedRecording, mobileTab,
+                processedTranscription, currentPlayingSegmentIndex, audioCurrentTime, audioDuration,
+                seekAudioTo: uiComposable.seekAudioTo,
+                editingSummary, editingNotes, editingTitle, toggleEditTitle: uiComposable.toggleEditTitle,
+                filterByTag: recordingsComposable.filterByTag,
+                filterTags, filterSpeakers, filterDatePreset, filterDateRange, filterAudioRemoved,
+                filterNeedsTranscription, filterNeedsSummary, filterNeedsSpeakers,
+                parseServerInstant,
+                composerText: () => chatComposable.assistant.input,
+                locale: () => window.i18n?.getIntlLocale?.(),
+            });
+            const { phoneListOpen } = phoneLayoutComposable;
+
             // Recording ids in the order the sidebar shows them, for
             // Shift-click span selection.
             const visibleRecordingIds = computed(() =>
@@ -3231,6 +3241,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return detailsMap;
             });
 
+            // Added to Date.now() before an elapsed time is computed from a
+            // job's started_at (queue-data.js elapsedSeconds).
+            const jobQueueClockOffset = ref(0);
+
             // Fetch job queue status from backend (with debounce protection)
             const fetchJobQueueStatus = async (force = false) => {
                 const now = Date.now();
@@ -3245,6 +3259,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (response.ok) {
                         const data = await response.json();
                         allJobs.value = data.jobs || [];
+                        // Server clock minus this browser's, for elapsed times.
+                        jobQueueClockOffset.value = clockOffsetMs(data.server_time);
                     } else if (response.status === 429) {
                         console.warn('Job queue polling rate limited');
                     }
@@ -3305,13 +3321,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }, { immediate: true });
 
-            // When popup opens, do a one-time fetch to populate it
-            watch(() => progressPopupClosed.value, (closed) => {
-                if (!closed) {
-                    // Popup just opened - fetch current status
-                    fetchJobQueueStatus();
-                }
-            });
 
             // Track completed recording IDs to detect new completions
             const completedRecordingIds = new Set();
@@ -3429,7 +3438,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         headers: { 'Content-Type': 'application/json' }
                     });
                     if (response.ok) {
-                        fetchJobQueueStatus();
+                        fetchJobQueueStatus(true);
                         showToast(safeT('messages.jobQueuedForRetry'), 'success');
                     } else {
                         const data = await response.json();
@@ -3448,7 +3457,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         method: 'DELETE'
                     });
                     if (response.ok) {
-                        fetchJobQueueStatus();
+                        await fetchJobQueueStatus(true);
                     } else {
                         const data = await response.json();
                         showToast(data.error || safeT('messages.failedToDeleteJob'), 'error');
@@ -3456,6 +3465,60 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } catch (error) {
                     console.error('Error deleting job:', error);
                 }
+            };
+
+            // Reload one recording after its job was canceled: the server
+            // settled it (completed, put back as it was, or canceled).
+            const refreshRecordingAfterCancel = async (recordingId) => {
+                if (!recordingId) return;
+                try {
+                    const response = await fetch(`/api/recordings/${recordingId}`);
+                    if (!response.ok) return;
+                    const data = await response.json();
+                    const idx = recordings.value.findIndex(r => r.id === recordingId);
+                    if (idx !== -1) recordings.value[idx] = data;
+                    if (selectedRecording.value?.id === recordingId) selectedRecording.value = data;
+                } catch (error) {
+                    console.error(`Error reloading recording ${recordingId} after a cancel:`, error);
+                }
+            };
+
+            // Running jobs whose cancel was accepted: job id -> recording id.
+            // The worker stops at its next safe point; the row then leaves
+            // the queue answer and the recording is reloaded.
+            const pendingCancels = new Map();
+            watch(allJobs, (jobs) => {
+                for (const recordingId of settledCancels(pendingCancels, jobs)) {
+                    refreshRecordingAfterCancel(recordingId);
+                }
+            });
+
+            // Cancel a waiting or running job. Resolves to
+            // { ok, canceled, cancelRequested }: canceled for a job that was
+            // removed at once, cancelRequested for a running job that stops
+            // at its next safe point (its row stays, marked, until then).
+            const cancelJob = async (jobId, recordingId = null) => {
+                try {
+                    const response = await fetch(`/api/recordings/jobs/${jobId}`, { method: 'DELETE' });
+                    const data = await response.json().catch(() => ({}));
+                    const result = cancelResult(response.status, data);
+                    if (result.cancelRequested) pendingCancels.set(jobId, recordingId);
+                    if (!result.ok) {
+                        showToast(data.error || safeT('messages.failedToDeleteJob'), 'error');
+                    }
+                    await fetchJobQueueStatus(true);
+                    if (result.canceled) await refreshRecordingAfterCancel(recordingId);
+                    return result;
+                } catch (error) {
+                    console.error('Error canceling job:', error);
+                    return { ok: false, canceled: false, cancelRequested: false };
+                }
+            };
+
+            // Cancel the job of a queue item that waits or runs.
+            const cancelProgressItem = async (item) => {
+                if (!item || !item.jobId || !item.canCancel) return { ok: false, canceled: false, cancelRequested: false };
+                return cancelJob(item.jobId, item.recordingId);
             };
 
             // Clear all completed jobs
@@ -3466,9 +3529,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         headers: { 'Content-Type': 'application/json' }
                     });
                     if (response.ok) {
-                        // Clear upload queue completed/failed items
+                        // Finished uploads are rows too; failed ones have
+                        // their own button (clearFailedJobs)
                         uploadQueue.value = uploadQueue.value.filter(item =>
-                            !['completed', 'failed', 'COMPLETED', 'FAILED'].includes(item.status)
+                            !['completed', 'COMPLETED'].includes(item.status)
                         );
                         // Force fetch to update the job list (bypass debounce)
                         await fetchJobQueueStatus(true);
@@ -3476,6 +3540,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } catch (error) {
                     console.error('Error clearing completed jobs:', error);
                 }
+            };
+
+            // Clear all failed jobs in one step. The rows leave the queue;
+            // the recordings stay in the library as failed.
+            const clearFailedJobs = async () => {
+                try {
+                    const response = await fetch('/api/recordings/jobs/clear-failed', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    if (response.ok) {
+                        // Uploads that failed before a job existed are rows too.
+                        uploadQueue.value = uploadQueue.value.filter(item =>
+                            !['failed', 'FAILED'].includes(item.status)
+                        );
+                        await fetchJobQueueStatus(true);
+                        return true;
+                    }
+                } catch (error) {
+                    console.error('Error clearing failed jobs:', error);
+                }
+                return false;
             };
 
             // Combined clear function for backward compatibility
@@ -3502,20 +3588,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (items.has(key) && !['queued', 'translating'].includes(status)) continue;
                         const percent = translationProgressPercent(job);
                         items.set(key, {
+                            // Stage code, real progress, times and actions
+                            // (queue-data.js)
+                            ...queueFieldsFromJob(job),
                             id: key,
                             recordingId: job.recording_id,
                             jobId: job.id,
+                            jobType: job.job_type,
+                            isNewUpload: !!job.is_new_upload,
                             clientId: null,
                             title: job.recording_title || t('common.untitled'),
                             status,
                             stage: null,
-                            statusLabel: status === 'queued' ? t('status.queuedTranslation') : null,
                             progress: percent,
-                            progressMessage: status === 'queued' ? t('progressQueue.positionInQueue', { position: job.position || '?' }) :
-                                             status === 'translating' ? (percent === null ? t('progressQueue.translatingMessage')
-                                                 : t('translation.progress', { done: job.progress_done || 0, total: job.progress_total })) :
-                                             status === 'completed' ? t('progressQueue.done') : t('progressQueue.failed'),
-                            queuePosition: job.position,
                             errorMessage: job.error_message,
                             friendlyError: job.error_message ? parseUnformattedError(job.error_message) : null,
                             completedAt: job.completed_at,
@@ -3544,28 +3629,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // queued for transcription (#543).
                     const isConverting = job.job_type === 'convert' && unifiedStatus === 'transcribing';
                     const stage = isJoining ? 'joining' : (isConverting ? 'converting' : null);
-                    // A waiting job says what it waits for.
-                    const queuedLabel = unifiedStatus !== 'queued' ? null
-                        : job.job_type === 'convert' ? t('status.queuedConversion')
-                        : job.queue_type === 'transcription' ? t('status.queuedTranscription') : null;
                     if (!existing || ['queued', 'transcribing', 'summarizing'].includes(unifiedStatus)) {
+                        const queueFields = queueFieldsFromJob(job);
                         items.set(key, {
+                            ...queueFields,
                             id: key,
                             recordingId: job.recording_id,
                             jobId: job.id,
+                            jobType: job.job_type,
+                            isNewUpload: !!job.is_new_upload,
                             clientId: null,
                             title: job.recording_title || t('common.untitled'),
                             status: unifiedStatus,
                             stage,
-                            statusLabel: isJoining ? t('progressQueue.joining') : (isConverting ? t('progressQueue.converting') : queuedLabel),
-                            progress: stage ? 25 : (unifiedStatus === 'transcribing' ? 50 : (unifiedStatus === 'summarizing' ? 80 : null)),
-                            progressMessage: unifiedStatus === 'queued' ? t('progressQueue.positionInQueue', { position: job.position || '?' }) :
-                                             isJoining ? t('progressQueue.joiningMessage') :
-                                             isConverting ? t('progressQueue.convertingMessage') :
-                                             unifiedStatus === 'transcribing' ? t('progressQueue.transcribingAudio') :
-                                             unifiedStatus === 'summarizing' ? t('help.generatingSummary') :
-                                             unifiedStatus === 'completed' ? t('progressQueue.done') : t('progressQueue.failed'),
-                            queuePosition: job.position,
+                            // A percent only where the server holds a real
+                            // number (chunks, a measured fraction); null
+                            // means a moving bar with the elapsed time.
+                            progress: queueFields.progress,
                             errorMessage: job.error_message,
                             friendlyError: job.error_message ? parseUnformattedError(job.error_message) : null,
                             completedAt: job.completed_at,
@@ -3589,7 +3669,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                             if (upload.status === 'uploading') {
                                 existing.status = 'uploading';
                                 existing.progress = upload.progress || 0;
-                                existing.progressMessage = upload.serverProcessing ? t('progressQueue.processingOnServer') : 'Uploading...';
+                                existing.progressInfo = null;
+                                existing.serverProcessing = !!upload.serverProcessing;
+                                existing.serverProcessingAt = upload.serverProcessingAt || null;
+                                existing.canCancel = false;
                                 existing.title = upload.displayName || upload.file?.name || existing.title;
                             }
                             continue;
@@ -3602,10 +3685,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     let progressMsg = t('progressQueue.waitingToUpload');
 
                     if (upload.status === 'uploading') {
+                        // With serverProcessing the bytes are sent and the
+                        // server is checking and converting the file before
+                        // it answers (the row says so, queueRowView).
                         unifiedStatus = 'uploading';
-                        // The bytes are sent; the server is checking and
-                        // converting the file before it answers.
-                        progressMsg = upload.serverProcessing ? t('progressQueue.processingOnServer') : t('progressQueue.uploadingMessage');
+                        progressMsg = '';
                     } else if (upload.status === 'pending' && upload.joinWaiting) {
                         unifiedStatus = 'queued';
                         progressVal = 100;
@@ -3647,6 +3731,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                         status: unifiedStatus,
                         progress: progressVal,
                         progressMessage: progressMsg,
+                        serverProcessing: !!upload.serverProcessing,
+                        serverProcessingAt: upload.serverProcessingAt || null,
+                        // A file that waits is removed, one in flight is
+                        // aborted; the upload of a recording made in the app
+                        // is the only copy and is not canceled.
+                        canCancelUpload: canCancelUpload(upload),
                         queuePosition: null,
                         errorMessage: upload.status === 'failed' ? upload.error : null,
                         duplicateWarning: upload.duplicateWarning || null,
@@ -3673,6 +3763,92 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             });
 
+            // ============================================
+            // THE QUEUE ON THE PAGE
+            // An indicator line and a panel (templates/components/queue/,
+            // static/css/queue.css). The groups, the counts and the wording
+            // of a row come from utils/queue-view.js.
+            // ============================================
+
+            // What one row shows: stage in words, a real number or a moving
+            // bar with the elapsed time, and what can be done with it.
+            const queueRowView = (item, group) => {
+                const label = stageLabel(item);
+                const fromUpload = !item.jobId;
+                const progress = rowProgress(item, parseQueueInstant);
+                // Times of the server are shown against the clock of this browser
+                const toLocal = (ms) => (ms === null || ms === undefined ? null
+                    : (item.jobId ? ms - jobQueueClockOffset.value : ms));
+                let number = '';
+                if (progress.kind === 'percent') number = formatPercent(progress.percent);
+                else if (progress.kind === 'count') number = t('progressQueue.partsOf', { done: progress.done, total: progress.total });
+                let stage = t(label.key, label.params || undefined);
+                let detail = label.detailKey ? t(label.detailKey) : '';
+                if (group === 'waiting' && fromUpload) stage = item.progressMessage || stage;
+                if (item.status === 'uploading' && item.serverProcessing) detail = t('progressQueue.detail.onServer');
+                const error = group !== 'failed' ? null : item.friendlyError
+                    // A cause that is not recognized is shown in the words of the server (a used-up
+                    // budget, for example); the advice to reprocess says nothing about it
+                    ? { title: item.friendlyError.title,
+                        text: (item.friendlyError.isKnown === false
+                            ? item.friendlyError.message || item.friendlyError.guidance
+                            : item.friendlyError.guidance || item.friendlyError.message) || '' }
+                    : { title: item.status === 'upload_failed' ? t('progressQueue.uploadFailed') : t('progressQueue.failed'),
+                        text: item.errorMessage || '' };
+                const finished = group === 'done' ? parseQueueInstant(item.finishedAt || item.completedAt) : null;
+                return {
+                    mark: rowMark(item),
+                    stage,
+                    detail,
+                    progress,
+                    number,
+                    since: progress.kind === 'moving' ? toLocal(progress.since) : null,
+                    finished: toLocal(finished),
+                    error,
+                    canOpen: !!item.recordingId,
+                    canCancel: fromUpload ? !!item.canCancelUpload : !!item.canCancel,
+                    canRetry: group === 'failed' && !!item.jobId,
+                    canRemove: group === 'failed' || group === 'done',
+                };
+            };
+
+            const QUEUE_GROUP_TITLES = {
+                active: 'progressQueue.groups.active',
+                waiting: 'progressQueue.groups.waiting',
+                failed: 'progressQueue.groups.failed',
+                done: 'progressQueue.groups.done',
+            };
+            // Active, Waiting, Failed, Recently finished
+            const queueGroupList = computed(() => {
+                const groups = groupQueueItems(unifiedProgressItems.value);
+                return Object.keys(QUEUE_GROUP_TITLES).map(name => ({
+                    name,
+                    title: t(QUEUE_GROUP_TITLES[name]),
+                    items: groups[name].map(item => ({ ...item, view: queueRowView(item, name) })),
+                }));
+            });
+            const queueSummary = computed(() => {
+                const groups = {};
+                for (const group of queueGroupList.value) groups[group.name] = group.items;
+                return summarizeQueue(groups);
+            });
+            // "2 processing · 1 queued · 1 failed"
+            const queueParts = computed(() => summaryParts(queueSummary.value).map(part => ({
+                ...part,
+                text: t(`progressQueue.count.${part.key}`, { count: part.count }),
+            })));
+            // The pill in the top bar has less room: "5 in queue · 1 failed"
+            const queuePillParts = computed(() => {
+                const { processing, queued } = queueSummary.value;
+                if (!(processing + queued)) return queueParts.value;
+                return [
+                    { key: 'inQueue', count: processing + queued, tone: 'plain', text: t('progressQueue.count.inQueue', { count: processing + queued }) },
+                    ...queueParts.value.filter(part => part.key === 'failed'),
+                ];
+            });
+            const queueSummaryText = computed(() => queueParts.value.map(part => part.text).join(' · ')
+                || t('progressQueue.empty'));
+
             // Filtered views of unified items
             const activeProgressItems = computed(() =>
                 unifiedProgressItems.value.filter(item =>
@@ -3689,22 +3865,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     ['failed', 'upload_failed'].includes(item.status)
                 )
             );
-
-            // Helper to get status display info
-            const getStatusDisplay = (status) => {
-                const displays = {
-                    'ready': { label: t('progressQueue.waiting'), color: 'gray', icon: 'fa-clock' },
-                    'uploading': { label: t('status.uploading'), color: 'blue', icon: 'fa-cloud-upload-alt', animate: true },
-                    'queued': { label: t('status.queued'), color: 'yellow', icon: 'fa-clock' },
-                    'transcribing': { label: t('status.transcribing'), color: 'purple', icon: 'fa-microphone-alt', animate: true },
-                    'summarizing': { label: t('status.summarizing'), color: 'green', icon: 'fa-file-alt', animate: true },
-                    'translating': { label: t('progressQueue.translating'), color: 'green', icon: 'fa-language', animate: true },
-                    'completed': { label: t('progressQueue.done'), color: 'green', icon: 'fa-check-circle' },
-                    'failed': { label: t('progressQueue.failed'), color: 'red', icon: 'fa-exclamation-circle' },
-                    'upload_failed': { label: t('progressQueue.uploadFailed'), color: 'red', icon: 'fa-exclamation-circle' }
-                };
-                return displays[status] || displays['ready'];
-            };
 
             // Cancel/remove an item from the queue
             const removeProgressItem = async (item) => {
@@ -3739,43 +3899,127 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return activeProgressItems.value.length;
             });
 
-            // Should show the processing popup
+            // The queue has rows
             const showProcessingPopup = computed(() => {
                 return unifiedProgressItems.value.length > 0;
             });
-            // The queue popup is on the page (themes/*/status-area.html)
-            const queuePopupShown = computed(() =>
-                showProcessingPopup.value && !progressPopupClosed.value && !(isMobileScreen.value && !isSidebarCollapsed.value));
 
-            // The state of the queue popup and of the sidebar as classes on
-            // <body>, for the stylesheets (primitives.css and the themes).
-            // They used body:has(...) for this, which made the browser look
-            // at the whole page again whenever an element was added or
-            // removed anywhere.
-            watch([queuePopupShown, progressPopupMinimized, isSidebarCollapsed, isMobileScreen], () => {
+            // Where the queue is on the page (the indicator cannot be closed;
+            // it is shown while the queue has rows):
+            //   phone   a strip above the player strip and at the foot of the
+            //           list; the panel is the sheet named 'queue'
+            //   dock    at the foot of the recording list; the open panel
+            //           takes its room from the list
+            //   float   the list is collapsed: a pill in the top bar and the
+            //           panel under it
+            // In the Desk theme the button in the status bar is the indicator
+            // while that bar is shown.
+            const { phoneSheet, openPhoneSheet, closePhoneSheet } = phoneLayoutComposable;
+            const isPhoneLayout = uiComposable.isMobile;
+            const queuePlace = computed(() => (isPhoneLayout.value ? 'phone' : (isSidebarCollapsed.value ? 'float' : 'dock')));
+            const queuePanelOpen = computed(() => (isPhoneLayout.value
+                ? phoneSheet.value === 'queue' : !progressPopupMinimized.value));
+            // An open panel stays when its last row is cleared (the empty state)
+            const queuePopupShown = computed(() => showProcessingPopup.value || (!isPhoneLayout.value && queuePanelOpen.value));
+            const queueStatusBar = computed(() => uiTheme.value === 'desk' && !isMobileScreen.value);
+            const queueIndicatorLabel = computed(() => `${t('progressQueue.title')}: ${queueParts.value.map(part => part.text).join(', ')}`);
+
+            const toggleQueuePanel = () => {
+                if (isPhoneLayout.value) {
+                    if (phoneSheet.value === 'queue') closePhoneSheet();
+                    else openPhoneSheet('queue');
+                    return;
+                }
+                progressPopupMinimized.value = !progressPopupMinimized.value;
+                if (!progressPopupMinimized.value) fetchJobQueueStatus();
+            };
+            watch(phoneSheet, (name) => { if (name === 'queue') fetchJobQueueStatus(); });
+
+            const openQueueRecording = async (item) => {
+                if (!item || !item.recordingId) return;
+                if (isPhoneLayout.value && phoneSheet.value === 'queue') closePhoneSheet();
+                await recordingsComposable.selectRecordingById(item.recordingId);
+            };
+
+            // Cancel of a row that waits or runs. Only a running first
+            // transcription is asked about first: it leaves a recording
+            // without a transcript.
+            const cancelQueueItem = async (item) => {
+                if (!item || !item.view || !item.view.canCancel) return;
+                if (!item.jobId) {
+                    await uploadComposable.cancelUpload(item.clientId);
+                    return;
+                }
+                if (cancelNeedsConfirm(item)) {
+                    const agreed = await window.confirmDialog({
+                        title: t('progressQueue.cancelConfirm.title'),
+                        message: t('progressQueue.cancelConfirm.message', { title: item.title }),
+                        confirmLabel: t('progressQueue.cancelConfirm.confirm'),
+                        cancelLabel: t('progressQueue.cancelConfirm.keep'),
+                        danger: true,
+                    });
+                    if (!agreed) return;
+                }
+                await cancelProgressItem(item);
+            };
+
+            // The state of the queue and of the sidebar as classes on
+            // <body>, for the stylesheets (queue.css, phone.css and the
+            // themes). A :has() on <body> would make the browser look at the
+            // whole page again whenever an element is added or removed
+            // anywhere.
+            watch([queuePopupShown, queuePanelOpen, isSidebarCollapsed, isMobileScreen, isPhoneLayout], () => {
                 const classes = document.body.classList;
                 const sidebarOpen = !isSidebarCollapsed.value && !isMobileScreen.value;
-                classes.toggle('queue-open', queuePopupShown.value && !progressPopupMinimized.value);
-                classes.toggle('queue-minimized', queuePopupShown.value && progressPopupMinimized.value);
+                const open = queuePopupShown.value && queuePanelOpen.value && !isPhoneLayout.value;
+                classes.toggle('queue-open', open);
+                classes.toggle('queue-minimized', queuePopupShown.value && !open);
                 classes.toggle('app-sidebar-open', sidebarOpen);
                 classes.toggle('app-sidebar-closed', !sidebarOpen);
                 classes.toggle('app-rail-open', !isSidebarCollapsed.value);
             }, { immediate: true });
+            // The panel over the page starts under the top bar, whose height
+            // differs between the themes
+            watch([queuePlace, queuePanelOpen, uiTheme], () => {
+                if (queuePlace.value !== 'float' || !queuePanelOpen.value) return;
+                const header = document.querySelector('#app > header');
+                if (header) document.documentElement.style.setProperty('--queue-float-top', `${Math.round(header.getBoundingClientRect().bottom)}px`);
+            }, { flush: 'post', immediate: true });
+            // A sheet covers the bottom of a phone screen: the toasts go
+            // under the top bar meanwhile (styles.css). The menu of the list
+            // is a drawer of the full height, with its close button at the
+            // top: the toasts stay at the bottom over it.
+            watch(phoneSheet, (name) => {
+                document.body.classList.toggle('phone-sheet-open', !!name && name !== 'menu');
+                nextTick(placeToasts);
+            }, { immediate: true });
 
-            // On phones the queue shows as a compact top-right pill by
-            // default — auto-minimize it when it first appears so it doesn't
-            // pop open over the content. The user can tap to expand. Desktop
-            // (and tablets ≥ 641 px) keep the existing expanded card.
-            watch(showProcessingPopup, (show) => {
-                if (show && windowWidth.value <= 640) {
-                    progressPopupMinimized.value = true;
+            // One clock for every elapsed time and "finished ... ago" in the
+            // panel. It writes the text into the rows itself, so a second
+            // that passes re-renders nothing, and it runs only while the
+            // panel is open and the tab is in front.
+            let queueClock = null;
+            const tickQueueClock = () => {
+                const now = Date.now();
+                for (const el of document.querySelectorAll('[data-queue-panel] [data-queue-since]')) {
+                    const since = Number(el.dataset.queueSince);
+                    const text = since > 0 ? formatElapsed((now - since) / 1000) : '';
+                    if (el.textContent !== text) el.textContent = text;
                 }
-            });
-
-            // All completed items count
-            const allCompletedCount = computed(() => {
-                return completedProgressItems.value.length + failedProgressItems.value.length;
-            });
+                for (const el of document.querySelectorAll('[data-queue-panel] [data-queue-finished]')) {
+                    const ago = finishedAgo(Number(el.dataset.queueFinished) || NaN, now);
+                    const text = ago ? t(ago.key, { count: ago.count }) : '';
+                    if (el.textContent !== text) el.textContent = text;
+                }
+            };
+            const syncQueueClock = () => {
+                const run = queuePanelOpen.value && queuePopupShown.value && document.visibilityState === 'visible';
+                if (run) tickQueueClock();
+                if (run && !queueClock) queueClock = setInterval(tickQueueClock, 1000);
+                if (!run && queueClock) { clearInterval(queueClock); queueClock = null; }
+            };
+            watch([queuePanelOpen, queuePopupShown, queueGroupList], syncQueueClock, { flush: 'post' });
+            document.addEventListener('visibilitychange', syncQueueClock);
 
             // Speaker computed properties
             const hasSpeakerNames = computed(() => {
@@ -4068,25 +4312,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             // video). This replaces the old magic 60+56px offset that
             // overlapped the player once it grew taller.
             let _mobileInsetObserver = null;
+            // The player strip, the tab bar and, on the assistant's tab, the composer
+            const mobileBottomParts = () => ['[data-mobile-player]', '[data-mobile-bottom-nav]', '[data-phone-composer]']
+                .map((selector) => document.querySelector(selector)).filter(Boolean);
+            // Over the recording list of a phone (a screen of its own) the bar
+            // sits at the bottom edge: the player and the tabs are behind the list.
+            const mobileBottomHeight = (parts) =>
+                (phoneListOpen.value ? 0 : parts.reduce((sum, el) => sum + el.offsetHeight, 0));
             const updateMobileBottomInset = () => {
-                const player = document.querySelector('[data-mobile-player]');
-                const nav = document.querySelector('[data-mobile-bottom-nav]');
-                const h = (player ? player.offsetHeight : 0) + (nav ? nav.offsetHeight : 0);
-                document.documentElement.style.setProperty('--mobile-bottom-inset', h + 'px');
+                const parts = mobileBottomParts();
+                document.documentElement.style.setProperty('--mobile-bottom-inset', mobileBottomHeight(parts) + 'px');
                 // Re-observe the current elements so live height changes
-                // (e.g. toggling video in the player) keep the inset in sync.
+                // (e.g. toggling video in the player, the composer growing
+                // with its text) keep the inset in sync.
                 if (typeof ResizeObserver !== 'undefined') {
                     if (!_mobileInsetObserver) {
                         _mobileInsetObserver = new ResizeObserver(() => {
-                            const p = document.querySelector('[data-mobile-player]');
-                            const n = document.querySelector('[data-mobile-bottom-nav]');
-                            const hh = (p ? p.offsetHeight : 0) + (n ? n.offsetHeight : 0);
-                            document.documentElement.style.setProperty('--mobile-bottom-inset', hh + 'px');
+                            document.documentElement.style.setProperty('--mobile-bottom-inset', mobileBottomHeight(mobileBottomParts()) + 'px');
                         });
                     }
                     _mobileInsetObserver.disconnect();
-                    if (player) _mobileInsetObserver.observe(player);
-                    if (nav) _mobileInsetObserver.observe(nav);
+                    parts.forEach((el) => _mobileInsetObserver.observe(el));
                 }
             };
             // Re-measure whenever the bottom layout can change (view switch,
@@ -4094,7 +4340,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // first appearing) — this also catches the player mounting /
             // unmounting, which the ResizeObserver alone can't.
             watch([currentView, () => selectedRecording.value?.id, mobileTab,
-                   videoCollapsed, audioPlayerPosition, showProcessingPopup],
+                   videoCollapsed, audioPlayerPosition, showProcessingPopup, phoneListOpen],
                   () => nextTick(updateMobileBottomInset));
 
             // =========================================================================
@@ -4245,6 +4491,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         window.history.replaceState({}, '', newUrl);
                     }
                 } catch (_) { /* no-op: param parsing/replaceState are best-effort */ }
+
+                // The queue as it stands: rows that failed or finished in
+                // the last hour are in the indicator after a reload too
+                // (polling starts only with something in progress).
+                fetchJobQueueStatus(true);
 
                 // ?open=shares|appearance: the header on the other pages opens
                 // these main-app dialogs by linking here.
@@ -4670,6 +4921,38 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
 
             // =========================================================================
+            // KEYBOARD SHORTCUTS (composables/shortcuts.js)
+            // =========================================================================
+            const shortcutsComposable = useAppShortcuts({
+                t, currentView, selectedRecording, recordings, visibleRecordingIds, selectedTab, isSidebarCollapsed,
+                showAdvancedFilters, selectionMode, chatPanelState,
+                queuePopupShown, queuePanelOpen, videoFullscreen, hasRecordingStats, processedTranscription,
+                viewingTranslation, editingSummary, editingNotes, playbackRate, playbackSpeeds, canDeleteRecordings,
+                transcriptFind: transcriptViewComposable.transcriptFind,
+                menus: [isUserMenuOpen, showHeaderFolderMenu, showHeaderReprocessMenu, showHeaderMoreMenu, showSortOptions,
+                    showDownloadMenu, showSummaryDownloadMenu, showSpeedMenu],
+                selectRecording: recordingsComposable.selectRecording,
+                toggleHighlight: recordingsComposable.toggleHighlight,
+                toggleInbox: recordingsComposable.toggleInbox,
+                toggleArchive: recordingsComposable.toggleArchive,
+                confirmDelete: modalsComposable.confirmDelete,
+                switchToUploadView: uiComposable.switchToUploadView,
+                toggleSidebar: uiComposable.toggleSidebar,
+                toggleAudioPlayback: uiComposable.toggleAudioPlayback,
+                skipAudio: phoneLayoutComposable.skipAudio,
+                setPlaybackRate: uiComposable.setPlaybackRate,
+                copyTranscription: uiComposable.copyTranscription,
+                copySummary: uiComposable.copySummary,
+                copyNotes: uiComposable.copyNotes,
+                toggleEditSummary: uiComposable.toggleEditSummary,
+                toggleEditNotes: uiComposable.toggleEditNotes,
+                openTranscriptionEditor: transcriptionComposable.openTranscriptionEditor,
+                toggleTranscriptionViewMode: uiComposable.toggleTranscriptionViewMode,
+                openChatPanel, collapseChatPanel, toggleQueuePanel,
+                closeTranscriptFind: transcriptViewComposable.closeTranscriptFind,
+            });
+
+            // =========================================================================
             // RETURN ALL STATE AND METHODS
             // =========================================================================
             return {
@@ -4721,17 +5004,31 @@ document.addEventListener('DOMContentLoaded', async () => {
                 retryJob,
                 deleteJob,
                 clearCompletedJobs,
+                jobQueueClockOffset,
+                cancelJob,
+                cancelProgressItem,
+                clearFailedJobs,
                 recentlyCompletedBackend,
                 clearAllCompleted,
-                allCompletedCount,
                 // Unified progress tracking
                 unifiedProgressItems,
                 activeProgressItems,
                 completedProgressItems,
                 failedProgressItems,
-                getStatusDisplay,
                 removeProgressItem,
                 retryProgressItem,
+                queueGroupList,
+                queueSummary,
+                queueParts,
+                queuePillParts,
+                queueSummaryText,
+                queuePlace,
+                queuePanelOpen,
+                queueStatusBar,
+                queueIndicatorLabel,
+                toggleQueuePanel,
+                openQueueRecording,
+                cancelQueueItem,
                 hasSpeakerNames,
                 canSaveSpeakerEdits,
                 showDuplicatesModal,
@@ -4835,6 +5132,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ...pwaComposable,
                 ...bulkSelectionComposable,
                 ...bulkOperationsComposable,
+                ...phoneLayoutComposable,
+                ...shortcutsComposable,
 
                 // Inline tag/folder creation (upload dialog)
                 createTagFromUploadSearch,

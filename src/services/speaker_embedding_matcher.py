@@ -282,6 +282,10 @@ def apply_speaker_names_to_transcription(recording, speaker_map):
     import logging
     logger = logging.getLogger(__name__)
 
+    # Only real names are applied: a diarization label is not a name.
+    from src.utils.speaker_labels import is_real_speaker_name
+    speaker_map = {label: name for label, name in (speaker_map or {}).items() if is_real_speaker_name(name)}
+
     if not speaker_map or not recording.transcription:
         logger.warning(f"Auto-label: No speaker_map or transcription (map={bool(speaker_map)}, trans={bool(recording.transcription)})")
         return False
@@ -310,7 +314,7 @@ def apply_speaker_names_to_transcription(recording, speaker_map):
         logger.warning(f"Auto-label: No speakers matched in segments")
         return False
 
-    logger.info(f"Auto-label: Applied names to {len(renamed_speakers)} speakers: {renamed_speakers}")
+    logger.info(f"Auto-label: Applied names to {len(renamed_speakers)} speakers")
 
     # Participants: real names only, never leftover SPEAKER_XX labels
     from src.services.speaker import participants_from_segments

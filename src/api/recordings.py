@@ -10,6 +10,7 @@ import re
 from datetime import date, datetime, timedelta
 from src.services.llm_settings import get_temperature
 from src.services.job_queue import job_queue
+from src.services import audit
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify, send_file, Response, current_app, make_response
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
@@ -33,6 +34,7 @@ from src.services.transcription_defaults import (
     resolve_transcription_model as _resolve_transcription_model,
 )
 from src.utils.dates import to_utc_naive
+from src.utils.log_filters import loggable_error, loggable_locator
 from src.utils.transcript_render import BASIC_TEMPLATE_FORMAT, parse_segments, render_segments
 from src.services.speaker import (
     update_speaker_usage, apply_speaker_map, participants_from_segments, update_voice_profiles,
@@ -57,6 +59,8 @@ from src.services.recording_filters import (
     needs_speakers_condition,
 )
 from src.utils.localization import api_error, format_number, translate
+from src.utils.incognito_logging import incognito_route, incognito_log, describe_error, short_code
+from src.utils.error_text import log_failure, user_error_text
 
 # Create blueprint
 recordings_bp = Blueprint('recordings', __name__)
@@ -117,6 +121,7 @@ def init_recordings_helpers(**kwargs):
 
 @recordings_bp.route('/recording/<int:recording_id>/download/transcript')
 @login_required
+@audit.access('recording.downloaded', details=lambda: {'part': 'transcript', 'format': audit.code(request.args.get('format'), ('txt', 'md'), 'txt')})
 def download_transcript_with_template(recording_id):
     """Download transcript with custom template formatting."""
     try:
@@ -214,6 +219,7 @@ def download_transcript_with_template(recording_id):
 
 @recordings_bp.route('/recording/<int:recording_id>/download/summary')
 @login_required
+@audit.access('recording.downloaded', details=lambda: {'part': 'summary', 'format': audit.code(request.args.get('format'), ('md',), 'docx')})
 def download_summary_word(recording_id):
     """Download recording summary as a Word document, or as Markdown with ?format=md (#584)."""
     try:
@@ -267,6 +273,7 @@ def download_summary_word(recording_id):
 
 @recordings_bp.route('/recording/<int:recording_id>/download/chat', methods=['POST'])
 @login_required
+@audit.access('recording.downloaded', details={'part': 'chat', 'format': 'docx'})
 def download_chat_word(recording_id):
     """Download chat conversation as a Word document."""
     try:
@@ -323,6 +330,7 @@ def download_chat_word(recording_id):
 
 @recordings_bp.route('/recording/<int:recording_id>/download/notes')
 @login_required
+@audit.access('recording.downloaded', details=lambda: {'part': 'notes', 'format': audit.code(request.args.get('format'), ('md',), 'docx')})
 def download_notes_word(recording_id):
     """Download recording notes as a Word document."""
     try:
@@ -407,6 +415,8 @@ def export_existing_recordings():
                 current_app.logger.error(f"Bulk export failed for recording {rid}: {e}")
                 failed += 1
 
+        # The number of recordings written to the export folder, nothing else.
+        audit.record('recording.exported', details={'count': exported})
         return jsonify({
             'exported': exported,
             'failed': failed,
@@ -510,6 +520,7 @@ def merge_recordings_endpoint():
 
 @recordings_bp.route('/recording/<int:recording_id>/generate_summary', methods=['POST'])
 @login_required
+@audit.emits('recording.reprocessed')
 def generate_summary_endpoint(recording_id):
     """Generate summary for a recording that doesn't have one.
 
@@ -570,6 +581,7 @@ def generate_summary_endpoint(recording_id):
             job_params['custom_prompt'] = custom_prompt
             job_params['custom_prompt_append'] = custom_prompt_append
 
+        audit.record_in_tx('recording.reprocessed', recording=recording, details={'kind': 'summary'})
         job_queue.enqueue(
             user_id=current_user.id,
             recording_id=recording.id,
@@ -591,6 +603,7 @@ def generate_summary_endpoint(recording_id):
 
 @recordings_bp.route('/recording/<int:recording_id>/update_speakers', methods=['POST'])
 @login_required
+@audit.emits('recording.edited')
 def update_speakers(recording_id):
     """Updates speaker labels in a transcription with provided names."""
     try:
@@ -632,6 +645,7 @@ def update_speakers(recording_id):
 
 @recordings_bp.route('/recording/<int:recording_id>/update_transcript', methods=['POST'])
 @login_required
+@audit.emits('recording.edited')
 def update_transcript(recording_id):
     """Updates the complete transcript data including text edits and speaker changes."""
     try:
@@ -668,8 +682,11 @@ def update_transcript(recording_id):
         recording.transcription = json.dumps(transcript_data)
         recording.participants = participants_from_segments(transcript_data)
 
-        update_voice_profiles(recording, label_to_name, current_user, seconds_by_key)
+        from src.services.speaker import labels_typed_as_names
+        update_voice_profiles(recording, label_to_name, current_user, seconds_by_key,
+                              shown_as=labels_typed_as_names(speaker_map))
 
+        audit.edited(recording, ['transcript', 'speakers' if speaker_map else None])
         db.session.commit()
 
         # The transcript text changed — rebuild Inquire chunks so semantic
@@ -746,14 +763,19 @@ def auto_identify_speakers(recording_id):
     except ValueError as ve:
         return jsonify({'error': str(ve)}), 503
     except Exception as e:
-        current_app.logger.error(f"Error during auto speaker identification for recording {recording_id}: {e}", exc_info=True)
-        return jsonify(api_error('unexpected_error_detail', detail=str(e))), 500
+        # An LLM error can quote the transcript: metadata at ERROR, the text
+        # and the traceback at DEBUG; the answer has the provider's short message.
+        log_failure(current_app.logger, 'error',
+                    f"Error during auto speaker identification for recording {recording_id}", e, traceback=True)
+        return jsonify(api_error('unexpected_error_detail',
+                                 detail=user_error_text(e, db.session.get(Recording, recording_id)))), 500
 
 # --- Chat with Transcription ---
 
 
 @recordings_bp.route('/recording/<int:recording_id>/reprocess_transcription', methods=['POST'])
 @login_required
+@audit.emits('recording.reprocessed')
 def reprocess_transcription(recording_id):
     """Reprocess transcription for a given recording."""
     try:
@@ -807,6 +829,7 @@ def reprocess_transcription(recording_id):
 
 @recordings_bp.route('/recording/<int:recording_id>/reprocess_summary', methods=['POST'])
 @login_required
+@audit.emits('recording.reprocessed')
 def reprocess_summary(recording_id):
     """Reprocess summary for a given recording (requires existing transcription)."""
     try:
@@ -901,6 +924,7 @@ def save_summary_prompt_route(recording_id):
 
 @recordings_bp.route('/recording/<int:recording_id>/regenerate_title', methods=['POST'])
 @login_required
+@audit.emits('recording.reprocessed')
 def regenerate_title(recording_id):
     """Regenerate the AI title for a recording based on its existing transcription."""
     try:
@@ -931,6 +955,7 @@ def regenerate_title(recording_id):
 
         recording.title = new_title
         recording.title_source = 'auto'
+        audit.record_in_tx('recording.reprocessed', recording=recording, details={'kind': 'title'})
         db.session.commit()
         # Keep the exported file in step with the new title, as /save does.
         try:
@@ -1437,12 +1462,18 @@ def get_recordings_paginated():
             # Apply speaker filters
             if speaker_filters:
                 speaker_conditions = []
+                from src.utils.speaker_labels import is_generic_speaker_label
                 for speaker_filter in speaker_filters:
+                    # A diarization label (speaker:SPEAKER_00) names nobody:
+                    # the filter is ignored.
+                    if is_generic_speaker_label(speaker_filter):
+                        continue
                     # Replace underscores back to spaces for matching
                     speaker_name = speaker_filter.replace('_', ' ')
                     speaker_conditions.append(Recording.participants.ilike(
                         contains_pattern(speaker_name), escape=LIKE_ESCAPE))
-                stmt = stmt.where(db.or_(*speaker_conditions))
+                if speaker_conditions:
+                    stmt = stmt.where(db.or_(*speaker_conditions))
 
             # Apply text search
             if text_query:
@@ -1661,7 +1692,8 @@ def save_metadata():
                     recording.title_source = 'user'
                 recording.title = data['title']
             if 'participants' in data:
-                recording.participants = data['participants']
+                from src.utils.speaker_labels import clean_participants
+                recording.participants = clean_participants(data['participants'])
             if 'summary' in data:
                 recording.summary = data['summary']
             if 'meeting_date' in data:
@@ -1698,6 +1730,9 @@ def save_metadata():
             from src.services.recording_state import set_user_archived
             set_user_archived(recording, current_user, data.get('is_archived'))
 
+        # The notes of a recipient are personal notes, not an edit of the recording.
+        audit.edited(recording, [f for f in edit_fields if requires_edit and f in data]
+                     + (['notes'] if 'notes' in data and recording.user_id == current_user.id else []))
         db.session.commit()
 
         # Re-export the recording if auto-export is enabled and editable fields were changed
@@ -1717,6 +1752,7 @@ def save_metadata():
 
 @recordings_bp.route('/recording/<int:recording_id>/update_transcription', methods=['POST'])
 @login_required
+@audit.emits('recording.edited')
 def update_transcription(recording_id):
     """Updates the transcription content for a recording."""
     try:
@@ -1744,6 +1780,8 @@ def update_transcription(recording_id):
         # Optional: If the transcription changes, we might want to indicate that the summary is outdated.
         # For now, we'll just save the transcript. A "regenerate summary" button could be a good follow-up.
 
+        audit.edited(recording, ['transcript' if new_transcription is not None else None,
+                                 'translation' if new_translation is not None else None])
         db.session.commit()
         current_app.logger.info(f"Transcription for recording {recording_id} was updated.")
 
@@ -1766,6 +1804,7 @@ from src.utils.language import canonical_translation_language as _canonical_tran
 
 @recordings_bp.route('/recording/<int:recording_id>/translate_transcription', methods=['POST'])
 @login_required
+@audit.emits('recording.reprocessed')
 def translate_transcription(recording_id):
     """Queue a translation of a recording's transcription."""
     try:
@@ -1845,6 +1884,7 @@ def translate_transcription(recording_id):
         if target_language:
             job_params['target_language'] = target_language
 
+        audit.record_in_tx('recording.reprocessed', recording=recording, details={'kind': 'translation'})
         job_id = job_queue.enqueue(
             user_id=current_user.id,
             recording_id=recording.id,
@@ -1930,6 +1970,7 @@ def toggle_archive(recording_id):
 
 @recordings_bp.route('/recording/<int:recording_id>/delete_audio', methods=['POST'])
 @login_required
+@audit.emits('recording.audio.deleted')
 def delete_recording_audio(recording_id):
     """Delete a recording's media file and keep the transcript, summary and notes.
 
@@ -2152,9 +2193,55 @@ def discard_upload_join(group):
     return jsonify({'success': True, 'removed': removed})
 
 
+@recordings_bp.route('/upload/cancel', methods=['POST'])
+@login_required
+def cancel_upload_route():
+    """Discard what an aborted upload leaves on the server.
+
+    Body: {"client_upload_id": "<the id sent with the upload form>"}. The
+    browser aborts its request first and then calls this. An ingestion that
+    is still running discards its file or its recording when it reads the
+    mark; a recording it has already stored is deleted here
+    (recording_deleted), unless it is COMPLETED or older than 15 minutes
+    (recording_kept). An id the server has never seen is marked as well: its
+    upload may still arrive.
+    """
+    from src.services.upload_cancel import cancel_upload, client_upload_id_from
+    client_upload_id = client_upload_id_from(request.get_json(silent=True) or {})
+    if not client_upload_id:
+        return jsonify(api_error('invalid_client_upload_id')), 400
+    try:
+        result = cancel_upload(current_user, client_upload_id)
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error canceling an upload of user {current_user.id}: {e}", exc_info=True)
+        return jsonify(api_error('unexpected_error')), 500
+    return jsonify({'success': True, **result})
+
+
 @recordings_bp.route('/api/recordings/incognito', methods=['POST'])
 @login_required
+@incognito_route
 def upload_incognito():
+    """The incognito upload, and the one audit row of an incognito request.
+
+    The row (incognito.used) holds the account, the time and the outcome.
+    Nothing about the file or its content is recorded, and incognito chat and
+    summary requests are not recorded at all.
+    """
+    from src.services import audit
+    try:
+        response = current_app.make_response(_upload_incognito_request())
+    except Exception:
+        audit.record('incognito.used', outcome='failed')
+        raise
+    status = response.status_code
+    audit.record('incognito.used',
+                 outcome='success' if status < 400 else 'denied' if status == 403 else 'failed')
+    return response
+
+
+def _upload_incognito_request():
     """
     Process audio in incognito mode - no database storage.
     Returns transcript/summary directly in response.
@@ -2172,6 +2259,7 @@ def upload_incognito():
     from src.tasks.processing import transcribe_incognito, generate_incognito_summary
 
     temp_filepath = None
+    request_dir = None
 
     try:
         if 'file' not in request.files:
@@ -2210,14 +2298,28 @@ def upload_incognito():
                 'max_size_mb': float(effective_limit_mb),
             }), 413
 
+        # The monthly transcription budget applies to an incognito request as
+        # to any other. It is checked before the upload is saved, so nothing
+        # of a refused request reaches the disk.
+        from src.services.transcription_tracking import transcription_tracker
+        can_proceed, _usage_pct, budget_msg = transcription_tracker.check_budget(current_user.id)
+        if not can_proceed:
+            incognito_log.warning(f"[Incognito] User {current_user.id} exceeded the transcription budget")
+            return jsonify({'incognito': True, 'error': budget_msg, 'budget_exceeded': True}), 403
+
         # Save to temp file - use secure temp directory. Suffix carries only
         # the extension, not the user's filename: the temp path is logged and
         # filenames can themselves be sensitive (no PHI in logs or paths).
         _ext = os.path.splitext(safe_filename)[1].lower() or '.audio'
-        with tempfile.NamedTemporaryFile(delete=False, suffix=_ext) as tmp:
+        # The request has a folder of its own under the incognito temporary
+        # folder: the upload, its converted copies and its chunks are written
+        # there and removed together (src/services/incognito_temp.py).
+        from src.services import incognito_temp
+        request_dir = incognito_temp.new_request_dir()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=_ext, dir=request_dir) as tmp:
             temp_filepath = tmp.name
             file.save(temp_filepath)
-            current_app.logger.info(f"[Incognito] Temp file saved: {temp_filepath}")
+            incognito_log.info(f"[Incognito] Temp file saved: {temp_filepath}")
 
         # Get optional parameters
         # An empty language falls through to the user's default, as on upload;
@@ -2249,9 +2351,9 @@ def upload_incognito():
         # Log only metadata - NEVER log content for HIPAA compliance. The
         # user's filename is deliberately excluded too (extension only):
         # filenames routinely contain names/dates and count as PHI.
-        current_app.logger.info(f"[Incognito] Processing request from user {current_user.id}: "
-                               f"ext={_ext}, size={file_size/1024/1024:.2f}MB, "
-                               f"language={language}, auto_summarize={auto_summarize}")
+        incognito_log.info(f"[Incognito] Processing request from user {current_user.id}: "
+                           f"ext={_ext}, size={file_size/1024/1024:.2f}MB, "
+                           f"language={short_code(language)}, auto_summarize={auto_summarize}")
 
         # Perform transcription synchronously (no database operations)
         result = transcribe_incognito(
@@ -2267,7 +2369,10 @@ def upload_incognito():
         )
 
         if result.get('error'):
-            current_app.logger.error(f"[Incognito] Transcription failed: {result['error']}")
+            incognito_log.error(f"[Incognito] Transcription failed: type={result.get('error_type')}, "
+                                f"code={result.get('error_code')}")
+            if result.get('error_code') == 'transcription_budget_exceeded':
+                return jsonify({'incognito': True, 'error': result['error'], 'budget_exceeded': True}), 403
             # result['error'] is English; a known kind of failure carries
             # error_code and is answered in the interface language (#477).
             if result.get('error_code') == 'audio_decode_failed':
@@ -2286,9 +2391,14 @@ def upload_incognito():
 
         # Optionally generate summary
         summary = None
+        summary_budget_message = None
         if auto_summarize and result.get('transcription'):
-            current_app.logger.info(f"[Incognito] Auto-summarize requested, generating summary...")
-            summary = generate_incognito_summary(result['transcription'], current_user)
+            incognito_log.info("[Incognito] Auto-summarize requested, generating summary...")
+            try:
+                summary = generate_incognito_summary(result['transcription'], current_user)
+            except TokenBudgetExceeded as budget_error:
+                # The transcript is still answered; the summary is left out.
+                summary_budget_message = str(budget_error)
 
         # Build response
         # Render markdown to HTML for summary display
@@ -2308,14 +2418,17 @@ def upload_incognito():
             'original_filename': original_filename,
             'file_size': file_size
         }
+        if summary_budget_message:
+            response_data['summary_error'] = summary_budget_message
+            response_data['summary_budget_exceeded'] = True
 
-        current_app.logger.info(f"[Incognito] Request completed successfully for user {current_user.id}")
+        incognito_log.info(f"[Incognito] Request completed successfully for user {current_user.id}")
 
         return jsonify(response_data), 200
 
     except RequestEntityTooLarge:
         max_size_mb = current_app.config['MAX_CONTENT_LENGTH'] / (1024 * 1024)
-        current_app.logger.warning(f"[Incognito] Upload failed: File too large (>{max_size_mb}MB)")
+        incognito_log.warning(f"[Incognito] Upload failed: File too large (>{max_size_mb}MB)")
         return jsonify({
             'incognito': True,
             **api_error('file_too_large_max', maxSize=format_number(max_size_mb)),
@@ -2323,7 +2436,7 @@ def upload_incognito():
         }), 413
 
     except Exception as e:
-        current_app.logger.error(f"[Incognito] Error during processing: {e}", exc_info=True)
+        incognito_log.error(f"[Incognito] Error during processing: {describe_error(e)}")
         return jsonify({
             'incognito': True,
             **api_error('unexpected_error_processing')
@@ -2334,13 +2447,22 @@ def upload_incognito():
         if temp_filepath and os.path.exists(temp_filepath):
             try:
                 os.remove(temp_filepath)
-                current_app.logger.info(f"[Incognito] Temp file deleted: {temp_filepath}")
+                incognito_log.info(f"[Incognito] Temp file deleted: {temp_filepath}")
             except Exception as cleanup_error:
-                current_app.logger.error(f"[Incognito] Failed to delete temp file {temp_filepath}: {cleanup_error}")
+                incognito_log.error(f"[Incognito] Failed to delete temp file {temp_filepath}: "
+                                    f"{describe_error(cleanup_error)}")
+        if request_dir:
+            from src.services import incognito_temp
+            if incognito_temp.remove_request_dir(request_dir):
+                incognito_log.info("[Incognito] Request temp folder removed")
+            else:
+                incognito_log.error("[Incognito] Request temp folder could not be removed; "
+                                    "the hourly sweep removes it later")
 
 
 @recordings_bp.route('/api/recordings/incognito/chat', methods=['POST'])
 @login_required
+@incognito_route
 def chat_incognito():
     """
     Chat with an incognito recording's transcription.
@@ -2383,37 +2505,55 @@ def chat_incognito():
                                                  with_sources=True)
 
         user_id = current_user.id
+        app = current_app._get_current_object()
 
-        current_app.logger.info(f"[Incognito Chat] User {user_id} sending message")
+        incognito_log.info(f"[Incognito Chat] User {user_id} sending message "
+                           f"({len(user_message)} characters, transcript {len(transcription)} characters, "
+                           f"{len(message_history)} earlier messages)")
 
         # Resolved here, in the request context, before the response streams.
         chat_temperature = get_temperature('chat')
 
         def generate():
             """Stream the chat response."""
+            # The budget check and the usage row need the database while the
+            # answer streams, as in the recording panel's /chat.
+            ctx = app.app_context()
+            ctx.push()
             try:
-                # No user_id, so nothing is tracked for incognito. The same
-                # events as the recording panel's /chat; [DONE] stays last
-                # for a tab loaded before this change.
-                response = call_chat_completion(messages, temperature=chat_temperature, stream=True)
-                for event in recording_events(process_streaming_with_thinking(response), segments):
+                # Counted against the user's monthly token budget: the usage
+                # row holds numbers and the model name only. The same events
+                # as the recording panel's /chat; [DONE] stays last for a tab
+                # loaded before this change.
+                response = call_chat_completion(messages, temperature=chat_temperature, stream=True,
+                                                user_id=user_id, operation_type='chat')
+                stream = process_streaming_with_thinking(response, user_id=user_id, operation_type='chat',
+                                                         app=app)
+                for event in recording_events(stream, segments):
                     yield event
 
                 yield "data: [DONE]\n\n"
 
+            except TokenBudgetExceeded as e:
+                incognito_log.warning(f"[Incognito Chat] Token budget exceeded for user {user_id}")
+                yield f"data: {json.dumps({'error': str(e), 'budget_exceeded': True})}\n\n"
             except Exception as e:
-                current_app.logger.error(f"[Incognito Chat] Error during streaming: {e}")
+                incognito_log.error(f"[Incognito Chat] Error during streaming: {describe_error(e)}")
                 # Provide more helpful error message for connection issues
                 error_msg = str(e).lower()
                 if 'connection' in error_msg or 'connect' in error_msg or 'refused' in error_msg:
                     yield f"data: {json.dumps(api_error('llm_connection_failed'))}\n\n"
                 else:
-                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                    # The provider's text can quote the transcript or the
+                    # message: the answer is a fixed message.
+                    yield f"data: {json.dumps(api_error('chat_error'))}\n\n"
+            finally:
+                ctx.pop()
 
         return Response(generate(), mimetype='text/event-stream')
 
     except Exception as e:
-        current_app.logger.error(f"[Incognito Chat] Error: {e}", exc_info=True)
+        incognito_log.error(f"[Incognito Chat] Error: {describe_error(e)}")
         # Provide more helpful error message for connection issues
         error_msg = str(e).lower()
         if 'connection' in error_msg or 'connect' in error_msg or 'refused' in error_msg:
@@ -2423,6 +2563,7 @@ def chat_incognito():
 
 @recordings_bp.route('/api/recordings/incognito/summary', methods=['POST'])
 @login_required
+@incognito_route
 def generate_incognito_summary_endpoint():
     """
     Generate summary for an incognito recording on demand.
@@ -2449,7 +2590,8 @@ def generate_incognito_summary_endpoint():
         if client is None:
             return jsonify(api_error('summary_llm_not_configured')), 503
 
-        current_app.logger.info(f"[Incognito Summary] User {current_user.id} requesting summary generation")
+        incognito_log.info(f"[Incognito Summary] User {current_user.id} requesting summary generation "
+                           f"(transcript {len(transcription)} characters)")
 
         # Generate summary using existing function
         summary = generate_incognito_summary(transcription, current_user)
@@ -2463,13 +2605,17 @@ def generate_incognito_summary_endpoint():
         else:
             return jsonify(api_error('summary_generation_failed')), 503
 
+    except TokenBudgetExceeded as e:
+        incognito_log.warning(f"[Incognito Summary] Token budget exceeded for user {current_user.id}")
+        return jsonify({'error': str(e), 'budget_exceeded': True}), 403
     except Exception as e:
-        current_app.logger.error(f"[Incognito Summary] Error: {e}", exc_info=True)
+        incognito_log.error(f"[Incognito Summary] Error: {describe_error(e)}")
         # Provide more helpful error message for connection issues
         error_msg = str(e).lower()
         if 'connection' in error_msg or 'connect' in error_msg or 'refused' in error_msg:
             return jsonify(api_error('llm_connection_failed')), 503
-        return jsonify(api_error('summary_generation_failed_detail', detail=str(e))), 500
+        # The exception text can quote the transcript: the answer is a fixed message.
+        return jsonify(api_error('summary_generation_failed')), 500
 
 
 # Status Endpoint
@@ -2477,6 +2623,7 @@ def generate_incognito_summary_endpoint():
 
 @recordings_bp.route('/recording/<int:recording_id>', methods=['DELETE'])
 @login_required
+@audit.emits('recording.deleted')
 def delete_recording(recording_id):
     try:
         recording = db.session.get(Recording, recording_id)
@@ -2577,6 +2724,7 @@ def _owner_username_for_recipient(owner):
 
 @recordings_bp.route('/api/recordings/<int:recording_id>', methods=['GET'])
 @login_required
+@audit.access('recording.viewed', dedup=audit.DEDUP_VIEW)
 def get_recording_detail(recording_id):
     """Get full details for a specific recording including markdown HTML."""
     try:
@@ -2762,6 +2910,8 @@ def get_job_queue_status():
             for place, queued in enumerate(order, 1):
                 places[queued.id] = place + currently_processing
 
+        from src.utils.dates import utc_iso
+
         job_details = []
         for job in all_jobs:
             recording = db.session.get(Recording, job.recording_id)
@@ -2771,6 +2921,7 @@ def get_job_queue_status():
 
             queue_type = queue_name_for(job.job_type)
             position = places.get(job.id)
+            finished = job.completed_at if job.status in ('completed', 'failed') else None
 
             job_details.append({
                 'id': job.id,
@@ -2784,12 +2935,24 @@ def get_job_queue_status():
                 'error_message': job.error_message,
                 'progress_done': job.progress_done,
                 'progress_total': job.progress_total,
-                'created_at': job.created_at.isoformat() if job.created_at else None,
-                'started_at': job.started_at.isoformat() if job.started_at else None,
-                'completed_at': job.completed_at.isoformat() if job.completed_at else None
+                # A real number or nothing: {'done', 'total'} in chunks, or
+                # {'fraction'} a service measured. Never an estimate.
+                'progress': job.progress(),
+                'progress_kind': job.progress_kind_or_default(),
+                'stage': job.job_stage(),
+                'stage_detail': job.stage_detail if job.status == 'processing' else None,
+                'queue_position': position,
+                'queue': queue_type if job.status == 'queued' else None,
+                'cancel_requested': job.cancel_requested_at is not None,
+                'can_cancel': job.can_cancel(),
+                # UTC, with the Z marker.
+                'created_at': utc_iso(job.created_at),
+                'started_at': utc_iso(job.started_at),
+                'completed_at': utc_iso(job.completed_at),
+                'finished_at': utc_iso(finished),
             })
 
-        return jsonify({'jobs': job_details})
+        return jsonify({'jobs': job_details, 'server_time': utc_iso(datetime.utcnow())})
     except Exception as e:
         current_app.logger.error(f"Error fetching job queue status: {e}", exc_info=True)
         return jsonify(api_error('unexpected_error')), 500
@@ -2830,6 +2993,10 @@ def retry_failed_job(job_id):
         job.completed_at = None
         job.progress_done = None
         job.progress_total = None
+        job.progress_kind = None
+        job.stage = None
+        job.stage_detail = None
+        job.cancel_requested_at = None
         db.session.commit()
 
         current_app.logger.info(f"Job {job_id} queued for retry by user {current_user.id}")
@@ -2847,8 +3014,27 @@ def retry_failed_job(job_id):
 
 @recordings_bp.route('/api/recordings/jobs/<int:job_id>', methods=['DELETE'])
 @login_required
+@audit.emits('recording.job.canceled')
 def delete_job(job_id):
-    """Delete a job (clear from queue or history)."""
+    """Cancel a waiting or running job, or remove a finished one from the list.
+
+    By the state of the job:
+
+    - queued: the job is removed and its recording is settled (200,
+      ``canceled: true``).
+    - processing: the job is marked for cancel and its worker stops at the
+      next safe point (202, ``cancel_requested: true``). The row stays in
+      the queue status, with ``cancel_requested``, until the worker has
+      stopped. A second request gives the same answer.
+    - completed: the row is removed; the recording is untouched (200).
+    - failed: the row is removed. For a failed new upload the recording and
+      its audio are deleted with it, as before (200).
+
+    A stitch or merge job that waits or runs is not canceled (409,
+    job_not_cancelable). The owner of the job may do all of this; an
+    administrator may cancel another user's waiting or running job.
+    The recording after a cancel: src/services/job_cancel.py.
+    """
     try:
         from src.models import ProcessingJob
         import os
@@ -2857,8 +3043,29 @@ def delete_job(job_id):
         if not job:
             return jsonify(api_error('job_not_found')), 404
 
-        if job.user_id != current_user.id:
+        active = job.status in ('queued', 'processing')
+        if job.user_id != current_user.id and not (active and current_user.is_admin):
             return jsonify(api_error('access_denied')), 403
+
+        if active:
+            from src.services.job_cancel import cancel_job, NotCancelable
+            try:
+                outcome = cancel_job(job_id)
+            except NotCancelable:
+                return jsonify(api_error('job_not_cancelable')), 409
+            if outcome == 'removed':
+                current_app.logger.info(f"Job {job_id} canceled by user {current_user.id}")
+                return jsonify({'success': True, 'canceled': True, 'cancel_requested': False,
+                                'message': translate('server.apiMessage.jobCanceled')})
+            if outcome == 'cancel_requested':
+                current_app.logger.info(f"Cancel of job {job_id} requested by user {current_user.id}")
+                return jsonify({'success': True, 'canceled': False, 'cancel_requested': True,
+                                'message': translate('server.apiMessage.jobCancelRequested')}), 202
+            if outcome == 'gone':
+                return jsonify(api_error('job_not_found')), 404
+            # The job ended while the cancel was on its way: nothing was
+            # canceled, and the row stays for the list of finished jobs.
+            return jsonify(api_error('job_already_finished')), 409
 
         # A transcription still running on the WhisperX ASR service is
         # cancelled there, and a finished one has its stored transcript removed.
@@ -2873,10 +3080,16 @@ def delete_job(job_id):
                     try:
                         get_storage_service().delete(recording.audio_path, missing_ok=True)
                     except Exception as e:
-                        current_app.logger.error(f"Error deleting audio file: {e}")
+                        current_app.logger.error(f"Error deleting audio file of recording {recording.id}: "
+                                                 f"{loggable_error(e, recording.audio_path)}")
                 # Delete ALL processing jobs for this recording first
                 ProcessingJob.query.filter_by(recording_id=recording.id).delete()
+                # The session of a failed browser recording holds its title and notes.
+                from src.services.recording_deletion import forget_recording_sessions
+                forget_recording_sessions(recording.id)
                 db.session.delete(recording)
+            else:
+                db.session.delete(job)
         else:
             # Just delete this job
             db.session.delete(job)
@@ -2886,6 +3099,7 @@ def delete_job(job_id):
         return jsonify({'success': True, 'message': translate('server.apiMessage.jobDeleted')})
 
     except Exception as e:
+        db.session.rollback()
         current_app.logger.error(f"Error deleting job {job_id}: {e}", exc_info=True)
         return jsonify(api_error('unexpected_error')), 500
 
@@ -2908,6 +3122,37 @@ def clear_completed_jobs():
 
     except Exception as e:
         current_app.logger.error(f"Error clearing completed jobs: {e}", exc_info=True)
+        return jsonify(api_error('unexpected_error')), 500
+
+
+@recordings_bp.route('/api/recordings/jobs/clear-failed', methods=['POST'])
+@login_required
+def clear_failed_jobs():
+    """Remove all failed jobs of the current user from the queue list.
+
+    Only the job rows go. The recordings stay in the library as FAILED, where
+    each can be reprocessed or deleted; DELETE on one failed job of a new
+    upload is the call that deletes its recording as well.
+    """
+    try:
+        from src.models import ProcessingJob
+
+        failed = ProcessingJob.query.filter(
+            ProcessingJob.user_id == current_user.id,
+            ProcessingJob.status == 'failed'
+        )
+        # An ASR service job that could not be removed when its processing
+        # job failed gets one more attempt before the row goes.
+        _cancel_remote_asr_jobs(failed.filter(ProcessingJob.provider_task.isnot(None)).all())
+        deleted = failed.delete(synchronize_session=False)
+
+        db.session.commit()
+        current_app.logger.info(f"Cleared {deleted} failed jobs for user {current_user.id}")
+        return jsonify({'success': True, 'deleted': deleted})
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error clearing failed jobs: {e}", exc_info=True)
         return jsonify(api_error('unexpected_error')), 500
 
 
@@ -2997,6 +3242,7 @@ def get_audio_peaks(recording_id):
 
 @recordings_bp.route('/audio/<int:recording_id>')
 @login_required
+@audit.access(audit.media_event, also=audit.MEDIA_EVENTS)
 def get_audio(recording_id):
     """Serve audio file for a recording.
 
@@ -3033,7 +3279,7 @@ def get_audio(recording_id):
             return redirect(delivery.url, code=302)
 
         if not delivery.local_path or not os.path.exists(delivery.local_path):
-            current_app.logger.error(f"Audio file missing from server: {recording.audio_path}")
+            current_app.logger.error(f"Audio file of recording {recording.id} missing from server: {loggable_locator(recording.audio_path)}")
             return jsonify(api_error('audio_file_missing')), 404
 
         if download:
@@ -3141,6 +3387,16 @@ def chat_with_transcription():
             # Thinking tags split off; `source` events are added below.
             yield from process_streaming_with_thinking(stream, user_id=user_id, operation_type='chat', app=app)
 
+        # Read here, in the request: the recording is not loaded while the
+        # answer streams.
+        _echo_sources = [value for value in (recording.transcription, recording.summary, recording.notes,
+                                             recording.title, recording.participants,
+                                             recording.original_filename, user_message)
+                         if isinstance(value, str)]
+
+        def chat_error_text(error):
+            return user_error_text(error, extra_sources=_echo_sources)
+
         def generate():
             # Push app context for entire generator execution
             # This is needed because call_chat_completion checks budget which requires db access
@@ -3164,24 +3420,30 @@ def chat_with_transcription():
                 app.logger.warning(f"Token budget exceeded for user {user_id}: {e}")
                 yield f"data: {json.dumps({'error': str(e), 'budget_exceeded': True})}\n\n"
             except Exception as e:
-                app.logger.error(f"Error during chat stream generation: {str(e)}")
+                log_failure(app.logger, 'error',
+                            f"Error during chat stream generation for recording {recording_id}", e)
                 # Provide more helpful error message for connection issues
                 error_msg = str(e).lower()
                 if 'connection' in error_msg or 'connect' in error_msg or 'refused' in error_msg:
                     yield f"data: {json.dumps(api_error('llm_connection_failed'))}\n\n"
                 else:
-                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                    # The provider's short message, without what it repeats
+                    # of the transcript or the question.
+                    yield f"data: {json.dumps({'error': chat_error_text(e)})}\n\n"
             finally:
                 ctx.pop()
 
         return Response(generate(), mimetype='text/event-stream')
 
     except Exception as e:
-        current_app.logger.error(f"Error in chat endpoint: {str(e)}")
+        log_failure(current_app.logger, 'error', "Error in chat endpoint", e)
         error_msg = str(e).lower()
         if 'connection' in error_msg or 'connect' in error_msg or 'refused' in error_msg:
             return jsonify(api_error('llm_connection_failed')), 503
-        return jsonify({'error': str(e)}), 500
+        _data = request.get_json(silent=True) or {}
+        _recording = db.session.get(Recording, _data.get('recording_id')) if isinstance(_data.get('recording_id'), int) else None
+        return jsonify({'error': user_error_text(
+            e, _recording, extra_sources=[v for v in (_data.get('message'),) if isinstance(v, str)])}), 500
 
 
 # --- Tag Management for Recordings ---
@@ -3256,7 +3518,7 @@ def add_tag_to_recording(recording_id):
         from src.services.tag_sharing import apply_tag_shares
         shares_created = apply_tag_shares(recording, tag, sharing_enabled=_self.ENABLE_INTERNAL_SHARING)
         if shares_created > 0:
-            current_app.logger.info(f"Created {shares_created} auto-shares for recording {recording_id} via group tag '{tag.name}'")
+            current_app.logger.info(f"Created {shares_created} auto-shares for recording {recording_id} via group tag {tag.id}")
 
         db.session.commit()
 
@@ -3395,6 +3657,7 @@ def reorder_recording_tags(recording_id):
 
 @recordings_bp.route('/api/recordings/bulk', methods=['DELETE'])
 @login_required
+@audit.emits('recording.deleted')
 def bulk_delete_recordings():
     """Delete multiple recordings at once."""
     try:
@@ -3703,6 +3966,7 @@ def bulk_toggle():
 
 @recordings_bp.route('/api/recordings/<int:recording_id>/toggle_deletion_exempt', methods=['POST'])
 @login_required
+@audit.emits('recording.edited')
 def toggle_deletion_exempt(recording_id):
     """Toggle the deletion_exempt flag for a recording."""
     try:
@@ -3716,6 +3980,7 @@ def toggle_deletion_exempt(recording_id):
 
         # Toggle the flag
         recording.deletion_exempt = not recording.deletion_exempt
+        audit.edited(recording, ['deletion_exempt'])
         db.session.commit()
 
         return jsonify({

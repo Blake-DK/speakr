@@ -23,6 +23,14 @@ def _disable_csrf():
     app.config['WTF_CSRF_ENABLED'] = prev
 
 
+@pytest.fixture(autouse=True)
+def _every_progress_write(monkeypatch):
+    # These tests read the count after each chunk; the throttle that spaces
+    # the writes of a real job is covered in test_queue_progress.py.
+    from src.services import job_control
+    monkeypatch.setattr(job_control, 'PROGRESS_WRITE_INTERVAL', 0)
+
+
 @pytest.fixture
 def ctx():
     with app.app_context():
@@ -59,7 +67,7 @@ def _echo_llm(calls, drop_first=False):
     """A fake model that appends [it] to each value; optionally drops a key once."""
     state = {'dropped': False}
 
-    def fake(messages, user_id, prefix_opt):
+    def fake(messages, user_id):
         content = messages[-1]['content']
         payload = json.loads(content[content.find('{'):content.rfind('}') + 1])
         calls.append(len(payload))
@@ -150,9 +158,9 @@ def test_job_writes_progress_per_chunk(ctx, monkeypatch):
     during = []
     echo = _echo_llm([])
 
-    def fake(messages, user_id, prefix_opt):
+    def fake(messages, user_id):
         during.append(_job_progress(job_id))
-        return echo(messages, user_id, prefix_opt)
+        return echo(messages, user_id)
 
     monkeypatch.setattr(tt, '_call_llm', fake)
     job_queue._process_job(job)
@@ -188,11 +196,11 @@ def test_retry_starts_progress_again(ctx, monkeypatch):
     echo = _echo_llm([])
     count = {'n': 0}
 
-    def flaky(messages, user_id, prefix_opt):
+    def flaky(messages, user_id):
         count['n'] += 1
         if count['n'] == 2:
             raise RuntimeError('model timed out')
-        return echo(messages, user_id, prefix_opt)
+        return echo(messages, user_id)
 
     monkeypatch.setattr(tt, '_call_llm', flaky)
     job_queue._process_job(job)

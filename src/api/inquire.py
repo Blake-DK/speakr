@@ -18,6 +18,8 @@ from src.database import db
 from src.models import *
 from src.utils import *
 from src.utils.localization import translate, api_error
+from src.utils.error_text import log_failure, user_error_text
+from src.utils.speaker_labels import real_speaker_names
 from src.services.embeddings import get_accessible_recording_ids, semantic_search_chunks, EMBEDDINGS_AVAILABLE
 from src.services.llm import call_llm_completion, call_chat_completion, process_streaming_with_thinking, client, chat_client, TokenBudgetExceeded
 
@@ -107,7 +109,7 @@ def create_inquire_session():
             user_id=current_user.id,
             session_name=data.get('session_name'),
             filter_tags=json.dumps(data.get('filter_tags', [])),
-            filter_speakers=json.dumps(data.get('filter_speakers', [])),
+            filter_speakers=json.dumps(real_speaker_names(data.get('filter_speakers', []))),
             filter_date_from=datetime.fromisoformat(data['filter_date_from']).date() if data.get('filter_date_from') else None,
             filter_date_to=datetime.fromisoformat(data['filter_date_to']).date() if data.get('filter_date_to') else None,
             filter_recording_ids=json.dumps(data.get('filter_recording_ids', []))
@@ -145,8 +147,9 @@ def inquire_search():
             filters['tag_ids'] = data['filter_tags']
         if data.get('filter_folders'):
             filters['folder_ids'] = data['filter_folders']
-        if data.get('filter_speakers'):
-            filters['speaker_names'] = data['filter_speakers']
+        # Diarization labels (SPEAKER_00) name nobody: such values are ignored.
+        if real_speaker_names(data.get('filter_speakers')):
+            filters['speaker_names'] = real_speaker_names(data['filter_speakers'])
         if data.get('filter_recording_ids'):
             filters['recording_ids'] = data['filter_recording_ids']
         if data.get('filter_date_from'):
@@ -193,7 +196,8 @@ def inquire_stream(user, data, mode='auto', tool_names=None):
     
     # The query text is user content: DEBUG only (discussion #603).
     current_app.logger.info(
-        f"Inquire chat - User: {user.username}, Query: {len(user_message or '')} characters, Filters: {filters}")
+        f"Inquire chat - User: {user.id}, Query: {len(user_message or '')} characters, "
+        f"Filters: {dict(filters, speaker_names=len(filters['speaker_names'])) if isinstance(filters, dict) and filters.get('speaker_names') else filters}")
     current_app.logger.debug(f"Inquire chat query of user {user.id}: '{user_message}'")
     
     # Capture user context and app before generator to avoid context issues
@@ -295,7 +299,7 @@ Use proper markdown formatting including headings (##), bold (**text**), bullet 
                     return
                     
             except Exception as e:
-                app.logger.warning(f"Router failed, defaulting to RAG: {e}")
+                log_failure(app.logger, 'warning', "Router failed, defaulting to RAG", e)
             
             # Step 2: Query enrichment - generate better search terms based on user intent
             yield create_status_response('enriching', 'Enriching search query...')
@@ -385,7 +389,7 @@ Respond with only a JSON array of strings: ["term1", "term2", ...]"""
                 search_queries = [user_message] + enriched_terms[:3]  # Use original + top 3 enriched terms
                 
             except Exception as e:
-                app.logger.warning(f"Query enrichment failed, using original query: {e}")
+                log_failure(app.logger, 'warning', "Query enrichment failed, using original query", e)
                 search_queries = [user_message]
             
             # Step 2: Semantic search with multiple queries
@@ -422,7 +426,7 @@ Respond with only a JSON array of strings: ["term1", "term2", ...]"""
                 available_speakers = set()
                 for recording in recordings_with_participants:
                     if recording.participants:
-                        participants = [p.strip() for p in recording.participants.split(',') if p.strip()]
+                        participants = real_speaker_names(recording.participants.split(','))
                         available_speakers.update(participants)
                 
                 # Check if any speakers are mentioned in the user query but missing from results
@@ -458,7 +462,8 @@ Respond with only a JSON array of strings: ["term1", "term2", ...]"""
                     for query in search_queries:
                         with app.app_context():
                             auto_filtered_results = semantic_search_chunks(user_id, query, auto_filters, data.get('context_chunks', 8))
-                            app.logger.info(f"Auto-filtered search ({len(query)} characters) with speakers {mentioned_speakers} returned {len(auto_filtered_results)} chunks")
+                            app.logger.info(f"Auto-filtered search ({len(query)} characters) with {len(mentioned_speakers)} speakers returned {len(auto_filtered_results)} chunks")
+                            app.logger.debug(f"Auto-filtered search speakers: {mentioned_speakers}")
                             app.logger.debug(f"Auto-filtered search for '{query}' returned {len(auto_filtered_results)} chunks")
                         
                         for chunk, similarity in auto_filtered_results:
@@ -613,7 +618,7 @@ Respond with only a JSON array of strings: ["term1", "term2", ...]"""
                 available_speakers = set()
                 for recording in recordings_with_participants:
                     if recording.participants:
-                        participants = [p.strip() for p in recording.participants.split(',') if p.strip()]
+                        participants = real_speaker_names(recording.participants.split(','))
                         available_speakers.update(participants)
                 
                 available_speakers = sorted(list(available_speakers))
@@ -817,8 +822,8 @@ Order your response with notes from the most recent meetings first. Always use p
             app.logger.warning(f"Token budget exceeded for user {user_id}: {e}")
             yield f"data: {json.dumps({'error': str(e), 'budget_exceeded': True})}\n\n"
         except Exception as e:
-            app.logger.error(f"Error in enhanced chat generation: {e}")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            log_failure(app.logger, 'error', f"Error in enhanced chat generation for user {user_id}", e)
+            yield f"data: {json.dumps({'error': user_error_text(e, extra_sources=[user_message] if isinstance(user_message, str) else ())})}\n\n"
         finally:
             ctx.pop()
 
@@ -882,8 +887,8 @@ def inquire_chat():
         return Response(library_events(stream, request_language()), mimetype='text/event-stream')
 
     except Exception as e:
-        current_app.logger.error(f"Error in inquire chat endpoint: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        log_failure(current_app.logger, 'error', "Error in inquire chat endpoint", e)
+        return jsonify({'error': user_error_text(e)}), 500
 
 
 # Filter groups in the order the downloaded file lists them
@@ -1104,8 +1109,9 @@ def get_available_filters():
         speaker_names = set()
         for recording in recordings_with_participants:
             if recording.participants:
-                # Split participants by comma and clean up
-                participants = [p.strip() for p in recording.participants.split(',') if p.strip()]
+                # Split participants by comma and clean up; diarization
+                # labels (SPEAKER_00) are never offered as a filter
+                participants = real_speaker_names(recording.participants.split(','))
                 speaker_names.update(participants)
 
         speaker_names = sorted(list(speaker_names))

@@ -22,7 +22,7 @@ Admin privileges are powerful and should be granted sparingly. Admin users can s
 
 Beyond the admin role, Speakr offers granular per-user permissions that control specific capabilities:
 
-**Public Sharing Permission**: The public sharing icon button (globe icon) in each user's row toggles their ability to create public share links. When enabled (green), the user can generate secure links to share recordings externally with anyone. When disabled (gray), the user can only use internal sharing to share with other Speakr users. This permission is only available if `ENABLE_PUBLIC_SHARING=true` in your environment configuration.
+**Public Sharing Permission**: The public sharing icon button (globe icon) in each user's row toggles their ability to create public share links. When enabled (green), the user can generate secure links to share recordings externally with anyone. When disabled (gray), the user can only use internal sharing to share with other Speakr users. This permission is only available if `ENABLE_PUBLIC_SHARING=true` in your environment configuration. When the permission is withdrawn, the existing public links of the user are answered with "not found" until the permission is returned; the links are not deleted.
 
 Use this permission to control external information sharing on a per-user basis. You might grant public sharing to executives, sales groups, or marketing staff who regularly communicate with external stakeholders, while restricting it for users handling sensitive internal data.
 
@@ -96,6 +96,12 @@ On instances that ran an earlier release, the recordings of a deleted user could
 ## Monitoring Usage Patterns
 
 The recording count and storage columns reveal how users interact with your Speakr instance. High recording counts might indicate power users who rely heavily on the system, while low counts could suggest users who need training or might not need accounts at all.
+
+In the **Last active** column, the time since the last use of each account is shown, for example "3 hours ago". The full date and time are shown on hover. **Never** is shown for an account that has not been used since the column was introduced. The list can be sorted by this column and by username with a click on the column header. In ascending order, the accounts that were never used are listed first, followed by the accounts with the oldest use, so accounts unused for months are found at the top.
+
+A request from a signed-in browser session or with an API token is counted as use. Requests that are sent on a timer from an open tab are not counted: the notification count, the status of the job queue and of recordings in processing, the renewal of the CSRF token, and the files of the interface. An account with a tab left open is therefore not shown as active. Only the time of the last request is stored, updated at most once every five minutes per account, so the time shown can be up to five minutes behind. No history of requests is kept. The column is visible to site administrators only.
+
+The **View activity** button in the actions of a row opens the [Audit log](audit-log.md) tab with the events of that account: its sign-ins, the recordings it opened, changed, shared or deleted, and the administrative actions that concern it.
 
 Storage consumption tells another important story. Users with disproportionately high storage might be uploading very long recordings, keeping everything indefinitely, or possibly misusing the system. You can adjust [file size limits](system-settings.md#maximum-file-size) and review [chunking settings](../troubleshooting.md#files-over-25mb-fail-with-openai) if needed. This information helps you have informed conversations about resource usage and establish appropriate policies.
 

@@ -22,6 +22,8 @@ from src.services.speaker_embedding_matcher import find_matching_speakers
 from src.services.speaker_snippets import get_speaker_snippets, get_speaker_recordings_with_snippets
 from src.services.speaker_merge import merge_speakers, preview_merge, can_merge_speakers
 from src.utils.localization import api_error, translate
+from src.services import audit
+from src.utils.speaker_labels import is_generic_speaker_label
 
 # Create blueprint
 speakers_bp = Blueprint('speakers', __name__)
@@ -55,6 +57,8 @@ def get_speakers():
         speakers = Speaker.query.filter_by(user_id=current_user.id)\
                                .order_by(Speaker.use_count.desc(), Speaker.last_used.desc())\
                                .all()
+        # A diarization label (SPEAKER_00) is never listed as a speaker.
+        speakers = [s for s in speakers if not is_generic_speaker_label(s.name)]
         # Voice profile counts (samples, variants) from one query for all.
         from src.models import SpeakerVoiceSample
         from src.services.voice_profiles import voice_summary
@@ -90,10 +94,10 @@ def search_speakers():
         stmt = Speaker.query.filter_by(user_id=current_user.id)
         if query:
             stmt = stmt.filter(Speaker.name.ilike(contains_pattern(query), escape=LIKE_ESCAPE))
-        speakers = stmt.order_by(Speaker.use_count.desc(), Speaker.last_used.desc())\
-                       .limit(10)\
-                       .all()
-        
+        speakers = stmt.order_by(Speaker.use_count.desc(), Speaker.last_used.desc()).all()
+        # Diarization labels are never offered as saved speakers.
+        speakers = [s for s in speakers if not is_generic_speaker_label(s.name)][:10]
+
         return jsonify([speaker.to_dict() for speaker in speakers])
     except Exception as e:
         current_app.logger.error(f"Error searching speakers: {e}")
@@ -111,7 +115,9 @@ def create_speaker():
         
         if not name:
             return jsonify(api_error('speaker_name_required')), 400
-        
+        if is_generic_speaker_label(name):
+            return jsonify(api_error('speaker_name_generic')), 400
+
         # Check if speaker already exists for this user
         existing_speaker = Speaker.query.filter_by(user_id=current_user.id, name=name).first()
         
@@ -155,6 +161,8 @@ def update_speaker(speaker_id):
 
         if not new_name:
             return jsonify(api_error('speaker_name_empty')), 400
+        if is_generic_speaker_label(new_name):
+            return jsonify(api_error('speaker_name_generic')), 400
 
         # Check if another speaker with this name already exists for this user
         existing_speaker = Speaker.query.filter_by(user_id=current_user.id, name=new_name).first()
@@ -177,9 +185,10 @@ def update_speaker(speaker_id):
         refresh_renamed_recordings(renamed)
 
         current_app.logger.info(
-            f"Updated speaker {speaker_id} from '{old_name}' to '{new_name}': "
+            f"Renamed speaker {speaker_id} of user {current_user.id}: "
             f"{chunks_updated} transcript chunks, {recordings_updated} recordings"
         )
+        current_app.logger.debug(f"Updated speaker {speaker_id} from '{old_name}' to '{new_name}'")
 
         return jsonify({
             'success': True,
@@ -433,7 +442,8 @@ def clear_speaker_embeddings(speaker_id):
 
         db.session.commit()
 
-        current_app.logger.info(f"Cleared voice embeddings for speaker {speaker_id} ({speaker.name})")
+        current_app.logger.info(f"Cleared voice embeddings for speaker {speaker_id} of user {current_user.id}")
+        current_app.logger.debug(f"Cleared voice embeddings for speaker {speaker_id} ({speaker.name})")
 
         return jsonify({
             'success': True,
@@ -453,6 +463,7 @@ def clear_speaker_embeddings(speaker_id):
 
 @speakers_bp.route('/speakers/snippet-audio/<int:recording_id>', methods=['GET'])
 @login_required
+@audit.access('recording.media.played', dedup=audit.DEDUP_VIEW)
 def get_snippet_audio(recording_id):
     """
     Serve a short audio snippet from a recording.

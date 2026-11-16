@@ -16,6 +16,7 @@ from src.database import db
 from src.models import *
 from src.utils import *
 from src.utils.localization import api_error, translate
+from src.services import audit
 from src.services.auto_shares import drop_stale_auto_shares, ensure_recipient_state
 from src.auth.permissions import CREATE_GROUPS, group_has_grant, set_group_grant, user_can
 from sqlalchemy.exc import IntegrityError
@@ -181,7 +182,7 @@ def sync_team_tag_shares(group_id):
                     ensure_recipient_state(recording.id, membership_to_share.user_id)
 
                     shares_created += 1
-                    current_app.logger.info(f"Synced share: Recording {recording.id} with user {membership_to_share.user_id} (role={membership_to_share.role}) via group tag '{tag.name}'")
+                    current_app.logger.info(f"Synced share: Recording {recording.id} with user {membership_to_share.user_id} (role={membership_to_share.role}) via group tag {tag.id}")
 
     db.session.commit()
 
@@ -256,13 +257,16 @@ def create_team():
         db.session.flush()
         if current_user.is_admin and data.get('members_create_groups_granted'):
             set_group_grant(CREATE_GROUPS, group.id, True)
+        # The id of the group; never its name.
+        audit.record_in_tx('group.created', group_id=group.id)
         db.session.commit()
     except IntegrityError:
         # Another request created the same name first
         db.session.rollback()
         return jsonify(api_error('group_name_exists')), 400
 
-    current_app.logger.info(f"User {current_user.username} created group: {name}")
+    current_app.logger.info(f"User {current_user.id} created group {group.id}")
+    current_app.logger.debug(f"User {current_user.username} created group: {name}")
     return jsonify(_group_payload(group)), 201
 
 
@@ -331,13 +335,19 @@ def update_team(group_id):
 
     if 'description' in data:
         group.description = description
+    # The names of the fields that were sent, never the group name.
+    audit.record_in_tx('group.changed', group_id=group_id, details={'fields': [
+        field for field, sent in (('name', bool(name)), ('description', 'description' in data),
+                                  ('members_create_groups_granted', 'members_create_groups_granted' in data))
+        if sent]})
     try:
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
         return jsonify(api_error('group_name_exists')), 400
 
-    current_app.logger.info(f"Admin {current_user.username} updated group: {group.name}")
+    current_app.logger.info(f"User {current_user.id} updated group {group.id}")
+    current_app.logger.debug(f"Admin {current_user.username} updated group: {group.name}")
     return jsonify(_group_payload(group))
 
 
@@ -368,9 +378,11 @@ def delete_team(group_id):
     db.session.delete(group)
     # The group's tags and folders no longer share anything (#570)
     drop_stale_auto_shares(user_ids=member_ids)
+    audit.record_in_tx('group.deleted', group_id=group_id)
     db.session.commit()
 
-    current_app.logger.info(f"User {current_user.username} deleted group: {group_name}")
+    current_app.logger.info(f"User {current_user.id} deleted group {group_id}")
+    current_app.logger.debug(f"User {current_user.username} deleted group: {group_name}")
     return jsonify({'success': True})
 
 
@@ -427,9 +439,12 @@ def add_team_member(group_id):
 
     membership = GroupMembership(group_id=group_id, user_id=user_id, role=role)
     db.session.add(membership)
+    audit.record_in_tx('group.member.added', group_id=group_id, target_user_id=user_id,
+                       details={'role': audit.code(role, ('admin', 'member'), 'other')})
     db.session.commit()
 
-    current_app.logger.info(f"Admin {current_user.username} added {user.username} to group {group.name} as {role}")
+    current_app.logger.info(f"User {current_user.id} added user {user_id} to group {group_id} as {role}")
+    current_app.logger.debug(f"Admin {current_user.username} added {user.username} to group {group.name} as {role}")
     return jsonify(membership.to_dict()), 201
 
 
@@ -458,12 +473,17 @@ def update_team_member(group_id, user_id):
     if role not in ['admin', 'member']:
         return jsonify(api_error('invalid_group_role')), 400
 
+    old_role = membership.role
     membership.role = role
     # Group-made shares give edit to admins only, the rule that created them
     drop_stale_auto_shares(user_ids=[user_id])
+    if role != old_role:
+        audit.record_in_tx('group.member.role_changed', group_id=group_id, target_user_id=user_id,
+                           details={'role': role, 'old_role': audit.code(old_role, ('admin', 'member'), 'other')})
     db.session.commit()
 
-    current_app.logger.info(f"Admin {current_user.username} updated {membership.user.username} role to {role} in group {membership.group.name}")
+    current_app.logger.info(f"User {current_user.id} updated the role of user {user_id} to {role} in group {group_id}")
+    current_app.logger.debug(f"Admin {current_user.username} updated {membership.user.username} role to {role} in group {membership.group.name}")
     return jsonify(membership.to_dict())
 
 
@@ -492,9 +512,11 @@ def remove_team_member(group_id, user_id):
     # Shares the group's tags and folders made for this member end with the
     # membership; a share the owner made by hand stays (#570)
     drop_stale_auto_shares(user_ids=[user_id])
+    audit.record_in_tx('group.member.removed', group_id=group_id, target_user_id=user_id)
     db.session.commit()
 
-    current_app.logger.info(f"Admin {current_user.username} removed {username} from group {group_name}")
+    current_app.logger.info(f"User {current_user.id} removed user {user_id} from group {group_id}")
+    current_app.logger.debug(f"Admin {current_user.username} removed {username} from group {group_name}")
     return jsonify({'success': True})
 
 

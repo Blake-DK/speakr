@@ -34,7 +34,7 @@ All endpoints require authentication, except the API description and the interac
     curl "https://speakr.example.com/api/v1/stats?token=YOUR_TOKEN"
     ```
 
-A header is the preferred way to send a token. The `?token=` query parameter is deprecated and is accepted only on `GET` requests, and only with full-access tokens. A `POST`, `PUT`, `PATCH` or `DELETE` request that carries the token only in `?token=` gets `401` with the code `query_token_read_only`. Every response to a request that uses `?token=` carries the header `Deprecation: true`. A URL that contains a token can be recorded in proxy logs and browser history, so a header is the safer choice for every client.
+A header is the preferred way to send a token. The `?token=` query parameter is deprecated and is accepted only on `GET` requests, and only with full-access tokens. A `POST`, `PUT`, `PATCH` or `DELETE` request that carries the token only in `?token=` gets `401` with the code `query_token_read_only`. Every response to a request that uses `?token=` carries the header `Deprecation: true`. A URL that contains a token can be recorded in proxy logs and browser history, so a header is the safer choice for every client. The query parameter will be removed in a later release, and an administrator can turn it off now (`api_query_tokens_enabled`): every request that carries its token only in `?token=` then gets `401` with the code `query_token_disabled`.
 
 ### Scopes
 
@@ -368,6 +368,7 @@ Returns the authenticated user's profile, preferences, and group memberships. Us
     "auto_summarization": true,
     "show_timestamps_simple_view": false,
     "editor_autosave": true,
+    "keyboard_shortcuts": true,
     "auto_translation": false,
     "diarize": true
   },
@@ -964,6 +965,12 @@ GET /api/v1/recordings/{id}/status
   "status": "QUEUED",
   "queue_position": 2,
   "stage": "transcription",
+  "processing_stage": "queued",
+  "stage_detail": null,
+  "progress": null,
+  "progress_kind": null,
+  "job_started_at": null,
+  "cancel_requested": false,
   "error_message": null,
   "completed_at": null
 }
@@ -983,6 +990,19 @@ GET /api/v1/recordings/{id}/status
 `stage` is the step the recording's waiting or running job belongs to: `conversion`, `transcription` or `summary`, or `null` when it has none. A recording stays `QUEUED` while its upload is converted and until its transcription starts; with `stage` set to `conversion`, a `queue_position` of `null` means the conversion is running.
 
 `queue_position` is the recording's place among the waiting jobs of its queue, where `1` is the next job to start. Users take turns, so a recording can be ahead of files that were uploaded earlier by someone else. The value is `null` when none of the recording's jobs is waiting.
+
+The remaining fields refer to the recording's waiting or running job and are `null` (`cancel_requested`: `false`) when it has none. A translation or an Inquire index job is not counted.
+
+| Field | Meaning |
+|-------|---------|
+| `processing_stage` | `queued`, `converting`, `assembling`, `joining`, `transcribing`, `titling` or `summarizing`. The title and the first summary of an upload are generated inside the transcription job, so `stage` can be `transcription` while `processing_stage` is `summarizing`. |
+| `stage_detail` | The step reported by the transcription service: `waiting`, `preparing`, `transcribing`, `aligning` or `diarizing`; `null` when nothing is reported. |
+| `progress` | `{"done": 3, "total": 8}` for a chunked transcription, `{"fraction": 0.42}` for a fraction measured by the transcription service, `null` when no measured number exists. No estimate is reported. |
+| `progress_kind` | `chunks`, `fraction` or `null`. |
+| `job_started_at` | Start of the running job in UTC with a trailing `Z`, for example `2026-11-15T09:30:05Z`; `null` while the job waits. |
+| `cancel_requested` | `true` when a cancel of the running job was requested in the web interface and the job has not stopped yet. |
+
+A job is canceled in the web interface. API v1 has no call for it. After the cancel of a first transcription, `status` is `FAILED` and `error_message` is `Processing was canceled.`; the transcription is started again with `POST /api/v1/recordings/{id}/transcribe`.
 
 ### Update Recording
 
@@ -1116,9 +1136,11 @@ Only the recording's owner can create a link. Without `force_new`, the newest li
   "existing": true,
   "flags_differ": false,
   "share": {"id": 31, "share_summary": true, "share_notes": false,
-            "created_at": "2026-10-02T09:00:00.000000Z", "expires_at": null}
+            "created_at": "2026-10-02T09:00:00.000000Z", "expires_at": null, "active": true}
 }
 ```
+
+`active` is `false` while the link is answered with `404`: public sharing is turned off, your account no longer has the permission to share publicly, or the link has expired. The link is kept, and it is served again when the administrator turns public sharing on again or returns the permission.
 
 `403` with `code` `feature_disabled` (public sharing is off), `not_permitted` (your account may not create public links) or `https_required` (the link would not be an HTTPS link: when `APP_BASE_URL` is set, its scheme decides and links use that address; otherwise the request must arrive over HTTPS, and behind a reverse proxy Speakr reads `X-Forwarded-Proto`, see `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXIES`).
 
@@ -1130,7 +1152,7 @@ GET /api/v1/recordings/{id}/shares
 
 **Scope:** `share`
 
-Your links of the recording, newest first, each with its `share_url`.
+Your links of the recording, newest first, each with its `share_url` and its `active` state.
 
 ### Revoke a Share Link
 
@@ -1162,7 +1184,7 @@ Finds words in the titles, participants, notes, summaries and transcripts of you
 | `scope` | string | `own` | `own`, `shared` or `all` (see [List Recordings](#list-recordings)) |
 | `recording_ids` | string | - | Comma list of recording ids |
 | `tag_id`, `folder_id` | - | - | As on [List Recordings](#list-recordings) |
-| `speaker` | string | - | Transcript hits of this speaker only (exact name, any case) |
+| `speaker` | string | - | Transcript hits of this speaker only (exact name, any case). A diarization label such as `SPEAKER_00` is ignored, as if the parameter was not sent. |
 | `date_from`, `date_to` | string | - | ISO dates or date-times; a date alone includes that whole day |
 | `date_field` | string | `meeting_date` | `meeting_date` (the creation time where a recording has none) or `created_at` |
 | `limit` | integer | 20 | 1 to 50 hits |
@@ -1356,6 +1378,8 @@ GET /api/v1/speakers
 
 `?email=` returns the speaker with that address (any case).
 
+A speaker is a person you named. A diarization label (`SPEAKER_00`, `Speaker 1`, `Speaker A`, `spk_0`, `Unknown`, `Unknown Speaker`) is never a speaker: it is absent from this list, it has no voice profile, and it is not part of `participants`. See [Diarization labels](#diarization-labels).
+
 **Response:**
 
 ```json
@@ -1396,7 +1420,7 @@ POST /api/v1/speakers
 }
 ```
 
-`email` and `aliases` are optional.
+`email` and `aliases` are optional. A diarization label as `name` gives `400` with the code `invalid_parameter`.
 
 ### Update Speaker
 
@@ -1406,7 +1430,7 @@ PUT /api/v1/speakers/{id}
 
 **Scope:** `write`
 
-Changes the name, email or aliases; send only what changes. A new name appears in every recording the speaker is in (transcript, participants, search). `email` must be an address (stored in lower case); `null` or `""` removes it. `aliases`: at most 20 names of at most 100 characters, trimmed, duplicates (any case) dropped; `[]` removes them. A name another of your speakers has gives `409`.
+Changes the name, email or aliases; send only what changes. A new name appears in every recording the speaker is in (transcript, participants, search). `email` must be an address (stored in lower case); `null` or `""` removes it. `aliases`: at most 20 names of at most 100 characters, trimmed, duplicates (any case) dropped; `[]` removes them. A name another of your speakers has gives `409`. A diarization label as `name` gives `400` with the code `invalid_parameter`.
 
 **Request Body:**
 
@@ -1425,6 +1449,19 @@ DELETE /api/v1/speakers/{id}
 ```
 
 **Scope:** `delete`
+
+### Diarization labels
+
+A diarization label is the placeholder of a voice that has not been named: `SPEAKER_00`, `SPEAKER_7`, `Speaker 1`, `Speaker A`, `spk_0`, `Unknown`, `Unknown Speaker`, in any case, and the default name of the segment editor in each interface language (`Sprecher 1`, `Orateur 1`). A single letter, a number alone and a name that only contains one of the words (`Speaker Johnson`, `Guest 1`) are names.
+
+The fields of the API are unchanged. The following applies to the labels:
+
+- **Transcripts.** A label is returned as before in `speaker` and `speaker_label` of a segment, with `speaker_id` `null`, and in [Get Recording Speakers](#get-recording-speakers) with `identified_name` `null`.
+- **Speakers.** A label is never returned by [List Speakers](#list-speakers), and it is refused as a name by [Create Speaker](#create-speaker) and [Update Speaker](#update-speaker) with `400`.
+- **Assigning names.** In `speaker_map` of `PUT /api/v1/recordings/{id}/speakers/assign`, a label given as the name is accepted: the segments are shown under that text, and no speaker, voice sample or quote is saved. When a named speaker of a recording is given a label again, the voice sample of that recording is removed from the profile of the person.
+- **Participants.** Labels are removed from `participants` when it is written, by an upload, by [Update Recording](#update-recording) or by a change of the speakers. A value without a label is stored as sent.
+- **Filters.** A label as a speaker filter is ignored, and the request succeeds as if the filter was not sent: `speaker` of [Search](#search), `filters.speakers` of [Inquire](#inquire), and `speaker:` in the `q` of the recording list of the web interface. Other values of the same filter are still applied.
+- **Inquire passages.** In semantic search hits, `speaker` is `null` for a passage spoken mainly by an unnamed voice. The `text` of the passage still shows the label.
 
 ### Get Recording Speakers
 
@@ -1968,6 +2005,8 @@ These are the event types a webhook can subscribe to:
 | `recording.share.created` | A public share link is created |
 | `recording.share.revoked` | A public share link is revoked |
 | `webhook.test` | A manual test delivery (see Test Webhook below) |
+
+The `data` of most recording events holds the `title` of the recording, and `recording.created` also holds `original_filename`. An administrator can leave both fields out of every payload (`webhook_omit_titles`); a receiver then identifies the recording by `recording_id`. Delivery records are removed after `webhook_delivery_retention_days` (default 30 days), so an older delivery is no longer listed and cannot be replayed.
 
 ### List Webhooks
 

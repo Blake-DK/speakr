@@ -33,6 +33,7 @@ if cosine_similarity is None:
 from src.database import db
 from src.models import Recording, TranscriptChunk, InternalShare, RecordingTag
 from src.utils.search import LIKE_ESCAPE, contains_pattern
+from src.utils.error_text import describe_error
 
 
 # Embedding model used to generate semantic-search vectors. By default Speakr
@@ -257,7 +258,7 @@ def _api_embed(texts, user_id=None, input_type="document"):
                 kwargs.pop('dimensions')
                 current_app.logger.warning(
                     f"Embedding model '{EMBEDDING_MODEL}' rejected the 'dimensions' "
-                    f"parameter (EMBEDDING_DIMENSIONS={EMBEDDING_DIMENSIONS}): {e}. "
+                    f"parameter (EMBEDDING_DIMENSIONS={EMBEDDING_DIMENSIONS}): {describe_error(e)}. "
                     "Retrying without it; the setting will be ignored for the rest "
                     "of this process."
                 )
@@ -266,8 +267,9 @@ def _api_embed(texts, user_id=None, input_type="document"):
             if not transient or attempt == _API_EMBED_MAX_ATTEMPTS:
                 current_app.logger.error(
                     f"Embedding API call failed (attempt {attempt}/{_API_EMBED_MAX_ATTEMPTS}, "
-                    f"transient={transient}): {e}"
+                    f"transient={transient}): {describe_error(e)}"
                 )
+                current_app.logger.debug(f"Embedding API call failed: full error text: {e}")
                 _api_embed_down_until = time.time() + _API_EMBED_COOLDOWN_SECONDS
                 return []
             # Exponential backoff with light jitter so concurrent retries
@@ -276,8 +278,9 @@ def _api_embed(texts, user_id=None, input_type="document"):
             backoff *= 0.85 + 0.3 * random.random()
             current_app.logger.warning(
                 f"Embedding API transient error (attempt {attempt}/{_API_EMBED_MAX_ATTEMPTS}), "
-                f"retrying in {backoff:.1f}s: {e}"
+                f"retrying in {backoff:.1f}s: {describe_error(e)}"
             )
+            current_app.logger.debug(f"Embedding API transient error: full error text: {e}")
             time.sleep(backoff)
 
     # Loop exhausted without returning a result.
@@ -509,7 +512,8 @@ def basic_text_search_chunks(user_id, query, filters=None, top_k=5):
                     for speaker_name in filters['speaker_names']
                 ]
                 chunks_query = chunks_query.filter(db.or_(*speaker_conditions))
-                current_app.logger.info(f"Applied speaker filter for: {filters['speaker_names']}")
+                current_app.logger.info(f"Applied speaker filter for {len(filters['speaker_names'])} speakers")
+                current_app.logger.debug(f"Speaker filter names: {filters['speaker_names']}")
 
             if filters.get('recording_ids'):
                 chunks_query = chunks_query.filter(
@@ -682,7 +686,8 @@ def semantic_search_chunks(user_id, query, filters=None, top_k=5):
                     for speaker_name in filters['speaker_names']
                 ]
                 chunks_query = chunks_query.filter(db.or_(*speaker_conditions))
-                current_app.logger.info(f"Applied speaker filter for: {filters['speaker_names']}")
+                current_app.logger.info(f"Applied speaker filter for {len(filters['speaker_names'])} speakers")
+                current_app.logger.debug(f"Speaker filter names: {filters['speaker_names']}")
 
             if filters.get('recording_ids'):
                 chunks_query = chunks_query.filter(

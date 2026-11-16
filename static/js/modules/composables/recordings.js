@@ -6,6 +6,7 @@
 import * as IncognitoStorage from '../db/incognito-storage.js';
 import { matchTagsByLabelName } from '../utils/label-links.js';
 import { confirmDialog } from '../utils/dialogs.js';
+import { realSpeakers } from '../utils/speaker-labels.js';
 
 // Guarded: the module can run before i18n.js has loaded.
 const t = (key, params) => (window.i18n ? window.i18n.t(key, params) : key);
@@ -20,7 +21,7 @@ export function useRecordings(state, utils, reprocessComposable) {
         filterFolder, includeChildFolders, sortBy,
         availableTags, availableSpeakers, availableFolders, selectedTagIds, uploadLanguage, uploadMinSpeakers, uploadMaxSpeakers, uploadHotwords, uploadInitialPrompt,
         useAsrEndpoint, connectorSupportsDiarization, globalError, uploadQueue, isProcessingActive, currentView, showUploadModal, uploadDeepLinkPending, labelDeepLinkPending,
-        isMobileScreen, isSidebarCollapsed, isRecording, audioBlobURL,
+        isMobileScreen, isSidebarCollapsed, isRecording, audioBlobURL, windowWidth,
         speakerColorMap,
         // Incognito mode
         incognitoRecording
@@ -112,7 +113,12 @@ export function useRecordings(state, utils, reprocessComposable) {
                     labelDeepLinkPending.value = false;
                 } else {
                     const lastRecordingId = localStorage.getItem('lastSelectedRecordingId');
-                    if (lastRecordingId && recordingsList.length > 0) {
+                    // On a phone the list is a screen of its own: a search or a
+                    // filter there loads the list again, and selecting the open
+                    // recording once more would close the list under the reader.
+                    const openOnPhone = windowWidth && windowWidth.value < 768
+                        && selectedRecording.value && selectedRecording.value.id == lastRecordingId;
+                    if (lastRecordingId && recordingsList.length > 0 && !openOnPhone) {
                         const recordingToSelect = recordingsList.find(r => r.id == lastRecordingId);
                         if (recordingToSelect) {
                             selectRecording(recordingToSelect);
@@ -206,7 +212,8 @@ export function useRecordings(state, utils, reprocessComposable) {
         try {
             const response = await fetch('/speakers');
             if (response.ok) {
-                availableSpeakers.value = await response.json();
+                // The Speakers filter lists people: never a diarization label.
+                availableSpeakers.value = realSpeakers(await response.json());
             } else {
                 availableSpeakers.value = [];
             }

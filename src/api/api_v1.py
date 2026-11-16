@@ -26,6 +26,8 @@ from typing import Optional
 from flask import Blueprint, jsonify, request, current_app, send_file, redirect
 from flask_login import login_required, current_user
 from src.utils.token_auth import public_route, require_scope, token_rate_key
+from src.services import audit
+from src.utils.speaker_labels import clean_participants, is_generic_speaker_label, real_speaker_names
 from sqlalchemy import func, extract, or_, and_
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import RequestEntityTooLarge
@@ -48,6 +50,7 @@ from src.services.storage import get_storage_service
 from src.utils.mime import served_media_mime, sandbox_media_response
 from src.utils.token_auth import load_user_from_token_value
 from src.utils.localization import api_error, translate
+from src.utils.error_text import log_failure
 
 # Create blueprint with /api/v1 prefix
 api_v1_bp = Blueprint('api_v1', __name__, url_prefix='/api/v1')
@@ -465,7 +468,7 @@ OPENAPI_SPEC = {
             "post": {"tags": ["Recordings"], "summary": "Delete audio, keep transcript", "description": "Deletes the media file and keeps the transcript, summary and notes. Same permission as deleting the recording. 409 if the audio is already removed or the recording is still processing.", "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "Audio removed"}, "403": {"description": "Permission denied"}, "404": {"description": "Recording not found"}, "409": {"description": "Already removed or still processing"}}}
         },
         "/recordings/{id}/status": {
-            "get": {"tags": ["Recordings"], "summary": "Get processing status", "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "Status with queue position"}}}
+            "get": {"tags": ["Recordings"], "summary": "Get processing status", "description": "status, queue_position and stage as before. For the recording's waiting or running job: processing_stage (queued, converting, assembling, joining, transcribing, titling, summarizing), stage_detail (what the transcription service reports: waiting, preparing, transcribing, aligning, diarizing; or null), progress ({done, total} in chunks, or {fraction} from 0 to 1, or null when no measured number exists), progress_kind (chunks, fraction or null), job_started_at (UTC with a Z, null while the job waits) and cancel_requested. No estimate is reported.", "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "Status with queue position, stage and progress"}}}
         },
         "/recordings/{id}/transcribe": {
             "post": {"tags": ["Processing"], "summary": "Queue transcription", "parameters": [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}], "requestBody": {"content": {"application/json": {"schema": {"type": "object", "properties": {"language": {"type": "string"}, "min_speakers": {"type": "integer"}, "max_speakers": {"type": "integer"}, "hotwords": {"type": "string", "description": "Connectors that accept hotword biasing route this to their native parameter (WhisperX hotwords, Mistral context_bias, OpenAI prompt, etc.). Connectors that ignore it drop it silently."}, "initial_prompt": {"type": "string", "description": "Free-text context hint. Same per-connector behaviour as hotwords."}, "transcription_model": {"type": "string", "description": "Per-request model override. Validated against the admin-curated visible-models list. Falls back to the configured default if absent or invalid."}}}}}}, "responses": {"200": {"description": "Job queued"}}}
@@ -1077,6 +1080,8 @@ def revoke_current_token():
     if token is None or is_sso_token(token):
         return jsonify({'error': translate('server.apiError.no_api_token'), 'code': 'no_api_token'}), 400
     current_app.logger.info("API token %s of user %s revoked by itself", token.id, token.user_id)
+    from src.services import audit
+    audit.record_in_tx('token.revoked', details={'token_id': token.id})
     db.session.delete(token)
     db.session.commit()
     return jsonify({'message': translate('server.apiMessage.tokenRevoked')}), 200
@@ -1308,6 +1313,8 @@ def get_current_user():
             'auto_summarization': current_user.auto_summarization is not False,
             'show_timestamps_simple_view': bool(current_user.show_timestamps_simple_view),
             'editor_autosave': bool(current_user.editor_autosave),
+            # None means on (an account from before the setting).
+            'keyboard_shortcuts': current_user.keyboard_shortcuts is not False,
             'auto_translation': bool(current_user.auto_translation),
             'notify_email_on_completion': bool(current_user.notify_email_on_completion),
             # The per-user diarize preference has had no control since Aug 2025
@@ -1695,6 +1702,9 @@ def search_recordings_v1():
                    date_from=args.get('date_from') or None, date_to=args.get('date_to') or None,
                    date_field=date_field, scope=scope)
     speaker = (args.get('speaker') or '').strip() or None
+    # A diarization label (SPEAKER_00) names nobody: the filter is ignored.
+    if speaker and is_generic_speaker_label(speaker):
+        speaker = None
 
     use_semantic = mode == 'semantic' or (mode == 'auto' and search_v1.semantic_available())
     if mode == 'semantic' and not search_v1.semantic_available():
@@ -1794,6 +1804,7 @@ def delete_external_ref(recording_id, ref_id):
 @api_v1_bp.route('/recordings/<int:recording_id>/share', methods=['POST'])
 @require_scope('share')
 @login_required
+@audit.emits('share.public.created')
 def create_public_share(recording_id):
     """Create or reuse a public link (mailr spec G10). Notes are not shared
     unless asked, and a reused link's flags change only with update_existing."""
@@ -1908,6 +1919,7 @@ def list_recording_changes():
 @api_v1_bp.route('/recordings/<int:recording_id>', methods=['GET'])
 @require_scope('read')
 @login_required
+@audit.access('recording.viewed', dedup=audit.DEDUP_VIEW)
 @_conditional('r')
 def get_recording(recording_id):
     """
@@ -2000,6 +2012,7 @@ def get_recording(recording_id):
 @api_v1_bp.route('/recordings/<int:recording_id>/transcript', methods=['GET'])
 @require_scope('read')
 @login_required
+@audit.access('recording.content.read', dedup=audit.DEDUP_VIEW, details={'part': 'transcript'})
 @_conditional('t')
 def get_transcript(recording_id):
     """
@@ -2117,6 +2130,7 @@ def get_transcript(recording_id):
 @api_v1_bp.route('/recordings/<int:recording_id>/summary', methods=['GET'])
 @require_scope('read')
 @login_required
+@audit.access('recording.content.read', dedup=audit.DEDUP_VIEW, details={'part': 'summary'})
 @_conditional('s')
 def get_summary(recording_id):
     """Get summary markdown."""
@@ -2133,6 +2147,7 @@ def get_summary(recording_id):
 @api_v1_bp.route('/recordings/<int:recording_id>/notes', methods=['GET'])
 @require_scope('read')
 @login_required
+@audit.access('recording.content.read', dedup=audit.DEDUP_VIEW, details={'part': 'notes'})
 @_conditional('n')
 def get_notes(recording_id):
     """Get notes markdown."""
@@ -2155,6 +2170,7 @@ def get_notes(recording_id):
 @api_v1_bp.route('/recordings/<int:recording_id>', methods=['PATCH'])
 @require_scope('write')
 @login_required
+@audit.emits('recording.edited')
 def update_recording(recording_id):
     """
     Update recording metadata, notes, or summary.
@@ -2198,7 +2214,7 @@ def update_recording(recording_id):
             recording.title_source = 'user'
         recording.title = data['title']
     if 'participants' in data:
-        recording.participants = data['participants']
+        recording.participants = clean_participants(data['participants'])
     if 'notes' in data:
         from src.services.recording_state import set_user_notes
         set_user_notes(recording, current_user, data['notes'])
@@ -2248,6 +2264,9 @@ def update_recording(recording_id):
             from src.services.auto_shares import drop_stale_auto_shares
             drop_stale_auto_shares(recording_ids=[recording.id])
 
+    # The notes of a recipient are personal notes, not an edit of the recording.
+    audit.edited(recording, [f for f in ('title', 'participants', 'summary', 'meeting_date') if f in data]
+                 + (['notes'] if 'notes' in data and recording.user_id == current_user.id else []))
     db.session.commit()
 
     # recording.updated goes out from the change listener after the commit
@@ -2275,6 +2294,7 @@ def update_recording(recording_id):
 @api_v1_bp.route('/recordings/<int:recording_id>/notes', methods=['PUT'])
 @require_scope('write')
 @login_required
+@audit.emits('recording.edited')
 def replace_notes(recording_id):
     """Replace notes entirely."""
     recording = db.session.get(Recording, recording_id)
@@ -2289,6 +2309,8 @@ def replace_notes(recording_id):
 
     from src.services.recording_state import set_user_notes
     set_user_notes(recording, current_user, data['notes'])
+    if recording.user_id == current_user.id:
+        audit.edited(recording, ['notes'])
     db.session.commit()
 
     return jsonify({'success': True, 'notes': recording.get_user_notes(current_user)})
@@ -2297,6 +2319,7 @@ def replace_notes(recording_id):
 @api_v1_bp.route('/recordings/<int:recording_id>/summary', methods=['PUT'])
 @require_scope('write')
 @login_required
+@audit.emits('recording.edited')
 def replace_summary(recording_id):
     """Replace summary entirely."""
     recording = db.session.get(Recording, recording_id)
@@ -2311,6 +2334,7 @@ def replace_summary(recording_id):
         return jsonify(api_error('summary_field_required')), 400
 
     recording.summary = data['summary']
+    audit.edited(recording, ['summary'])
     db.session.commit()
 
     return jsonify({'success': True, 'summary': recording.summary})
@@ -2323,6 +2347,7 @@ def replace_summary(recording_id):
 @api_v1_bp.route('/recordings/<int:recording_id>', methods=['DELETE'])
 @require_scope('delete')
 @login_required
+@audit.emits('recording.deleted')
 def delete_recording(recording_id):
     """Delete a recording."""
     recording = db.session.get(Recording, recording_id)
@@ -2356,6 +2381,7 @@ def delete_recording(recording_id):
 @api_v1_bp.route('/recordings/<int:recording_id>/delete-audio', methods=['POST'])
 @require_scope('delete')
 @login_required
+@audit.emits('recording.audio.deleted')
 def delete_recording_audio(recording_id):
     """Delete a recording's media file and keep its transcript, summary and notes."""
     recording = db.session.get(Recording, recording_id)
@@ -2395,12 +2421,22 @@ def get_recording_status(recording_id):
     from src.services.job_queue import job_queue
     queue_position = job_queue.get_position_in_queue(recording_id)
     stage = job_queue.get_stage(recording_id)
+    # The job itself: a finer stage code, and a real progress number where
+    # one exists (chunks finished of a total, or a measured fraction).
+    job = job_queue.get_active_job(recording_id)
+    from src.utils.dates import utc_iso
 
     return jsonify({
         'id': recording.id,
         'status': recording.status,
         'queue_position': queue_position,
         'stage': stage,
+        'processing_stage': job.job_stage() if job else None,
+        'stage_detail': job.stage_detail if job and job.status == 'processing' else None,
+        'progress': job.progress() if job else None,
+        'progress_kind': job.progress_kind_or_default() if job else None,
+        'job_started_at': utc_iso(job.started_at) if job else None,
+        'cancel_requested': bool(job and job.cancel_requested_at is not None),
         'error_message': recording.error_message if recording.status == 'FAILED' else None,
         'completed_at': recording.completed_at.isoformat() if recording.completed_at else None
     })
@@ -2424,6 +2460,7 @@ def _effective_diarize():
 @api_v1_bp.route('/recordings/<int:recording_id>/regenerate_title', methods=['POST'])
 @require_scope('process')
 @login_required
+@audit.emits('recording.reprocessed')
 def api_regenerate_title(recording_id):
     """Regenerate the AI title for a recording based on its existing transcription."""
     from src.api.recordings import regenerate_title
@@ -3081,7 +3118,9 @@ def list_speakers():
     if email:
         query = query.filter(db.func.lower(Speaker.email) == email)
     speakers = query.order_by(Speaker.use_count.desc(), Speaker.last_used.desc()).all()
-    return jsonify({'speakers': [_speaker_item(s) for s in speakers]})
+    # A diarization label (SPEAKER_00) is never listed as a speaker.
+    return jsonify({'speakers': [_speaker_item(s) for s in speakers
+                                 if not is_generic_speaker_label(s.name)]})
 
 
 _EMAIL = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
@@ -3149,6 +3188,8 @@ def create_speaker():
         return jsonify(api_error('speaker_name_required')), 400
 
     name = data['name'].strip()
+    if is_generic_speaker_label(name):
+        return jsonify({'error': translate('server.apiError.speaker_name_generic'), 'code': 'invalid_parameter'}), 400
 
     # Check if already exists
     existing = Speaker.query.filter_by(user_id=current_user.id, name=name).first()
@@ -3200,6 +3241,9 @@ def update_speaker(speaker_id):
         if not new_name:
             db.session.rollback()
             return jsonify({'error': translate('server.apiError.speaker_name_empty'), 'code': 'invalid_parameter'}), 400
+        if is_generic_speaker_label(new_name):
+            db.session.rollback()
+            return jsonify({'error': translate('server.apiError.speaker_name_generic'), 'code': 'invalid_parameter'}), 400
         if new_name != speaker.name:
             clash = Speaker.query.filter_by(user_id=current_user.id, name=new_name).first()
             if clash and clash.id != speaker.id:
@@ -3243,6 +3287,7 @@ def delete_speaker(speaker_id):
 @api_v1_bp.route('/recordings/<int:recording_id>/speakers', methods=['GET'])
 @require_scope('read')
 @login_required
+@audit.access('recording.content.read', dedup=audit.DEDUP_VIEW, details={'part': 'speakers'})
 @_conditional('k')
 def get_recording_speakers(recording_id):
     """Get speakers in a recording with suggestions."""
@@ -3319,6 +3364,7 @@ def get_recording_speakers(recording_id):
 @api_v1_bp.route('/recordings/<int:recording_id>/speakers/assign', methods=['PUT'])
 @require_scope('write')
 @login_required
+@audit.emits('recording.edited')
 def assign_speakers(recording_id):
     """
     Assign speaker names to a recording's transcription segments.
@@ -3438,7 +3484,8 @@ def identify_speakers(recording_id):
     except ValueError as ve:
         return jsonify({'error': str(ve)}), 503
     except Exception as e:
-        current_app.logger.error(f"Error during auto speaker identification for recording {recording_id}: {e}", exc_info=True)
+        log_failure(current_app.logger, 'error',
+                    f"Error during auto speaker identification for recording {recording_id}", e, traceback=True)
         return jsonify(api_error('unexpected_error')), 500
 
 
@@ -3449,6 +3496,7 @@ def identify_speakers(recording_id):
 @api_v1_bp.route('/recordings/<int:recording_id>/transcribe', methods=['POST'])
 @require_scope('process')
 @login_required
+@audit.emits('recording.reprocessed')
 def start_transcription(recording_id):
     """Queue transcription for a recording."""
     from src.services.job_queue import job_queue
@@ -3488,6 +3536,7 @@ def start_transcription(recording_id):
 @api_v1_bp.route('/recordings/<int:recording_id>/summarize', methods=['POST'])
 @require_scope('process')
 @login_required
+@audit.emits('recording.reprocessed')
 def start_summarization(recording_id):
     """Queue summarization for a recording with optional custom prompt."""
     from src.services.job_queue import job_queue
@@ -3560,7 +3609,7 @@ def chat_with_recording(recording_id):
         completion = call_chat_completion(messages, temperature=get_temperature('chat'), user_id=current_user.id)
         reply = completion.choices[0].message.content
     except Exception as e:
-        current_app.logger.error(f"Chat error: {e}")
+        log_failure(current_app.logger, 'error', f"Chat error for recording {recording.id}", e)
         return jsonify(api_error('chat_failed')), 500
 
     sources = []
@@ -3614,7 +3663,7 @@ def inquire_v1():
         'filter_recording_ids': allowed,
         'filter_tags': filters.get('tag_ids') or [],
         'filter_folders': filters.get('folder_ids') or [],
-        'filter_speakers': filters.get('speakers') or [],
+        'filter_speakers': real_speaker_names(filters.get('speakers')),
         'filter_date_from': filters.get('date_from'),
         'filter_date_to': filters.get('date_to'),
     }
@@ -3673,6 +3722,7 @@ def inquire_v1():
 @api_v1_bp.route('/recordings/<int:recording_id>/events', methods=['GET'])
 @require_scope('read')
 @login_required
+@audit.access('recording.content.read', dedup=audit.DEDUP_VIEW, details={'part': 'events'})
 @_conditional('e')
 def get_recording_events(recording_id):
     """Get calendar events extracted from a recording."""
@@ -3688,6 +3738,7 @@ def get_recording_events(recording_id):
 @api_v1_bp.route('/recordings/<int:recording_id>/events/ics', methods=['GET'])
 @require_scope('read')
 @login_required
+@audit.access('recording.content.read', dedup=audit.DEDUP_VIEW, details={'part': 'events_ics'})
 def download_events_ics(recording_id):
     """Download all events as ICS file."""
     from src.api.events import generate_ics_content
@@ -3719,6 +3770,7 @@ def download_events_ics(recording_id):
 @api_v1_bp.route('/recordings/<int:recording_id>/audio', methods=['GET'])
 @require_scope('read')
 @login_required
+@audit.access(audit.media_event, also=audit.MEDIA_EVENTS)
 def download_audio(recording_id):
     """Download or stream audio file."""
     recording = db.session.get(Recording, recording_id)
@@ -3934,6 +3986,7 @@ def batch_update_recordings():
 @api_v1_bp.route('/recordings/batch', methods=['DELETE'])
 @require_scope('delete')
 @login_required
+@audit.emits('recording.deleted')
 def batch_delete_recordings():
     """Batch delete multiple recordings."""
     data = request.get_json()
@@ -4255,7 +4308,7 @@ def upload_recording():
 
     def _prepare(recording):
         if participants is not None:
-            recording.participants = participants.strip() or None
+            recording.participants = clean_participants(participants.strip()) or None
         if key:
             recording.upload_idempotency_key = key
         db.session.flush()

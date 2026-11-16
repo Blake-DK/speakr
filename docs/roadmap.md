@@ -128,8 +128,8 @@ in detail yet:
 
 ## How releases are versioned
 
-Speakr is in alpha. The version scheme is `v0.MINOR.PATCH`, with
-releases through v0.8.x carrying an `-alpha` suffix:
+The version scheme is `v0.MINOR.PATCH`. Releases before v0.11.0 have an
+`-alpha` suffix; from v0.11.0 the suffix is dropped.
 
 - `MINOR` increments for larger feature batches. v0.9.0 was the first
   such bump in the v0.8 line — a coherent baseline rolling up the

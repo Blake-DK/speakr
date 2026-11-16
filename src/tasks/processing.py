@@ -11,6 +11,7 @@ These functions handle asynchronous processing tasks:
 import os
 import re
 import json
+import logging
 import time
 import tempfile
 import subprocess
@@ -28,8 +29,10 @@ from src.utils.ffprobe import get_codec_info, is_video_file, is_lossless_audio, 
 from src.utils.ffmpeg_utils import convert_to_mp3, extract_audio_from_video as ffmpeg_extract_audio, compress_audio, FFmpegError, FFmpegNotFoundError, FFmpegTimeoutError, AUDIO_DECODE_FAILED_MESSAGE
 from src.utils.audio_conversion import convert_if_needed, ConversionResult
 from src.utils.error_formatting import format_error_for_storage, sanitize_error_message
+from src.utils.error_text import log_failure, user_error_text
 from src.utils.transcript_render import resolve_timestamp_template_format
 from src.services.titling import user_title_instructions
+from src.utils.incognito_logging import incognito_log, describe_error, short_code
 from src.utils.mime import guess_media_type
 from src.config.app_config import AUDIO_COMPRESS_UPLOADS, AUDIO_CODEC, AUDIO_BITRATE
 import src.config.app_config as _app_config
@@ -50,6 +53,8 @@ from src.config.app_config import (
 )
 from src.file_exporter import export_recording, ENABLE_AUTO_EXPORT
 from src.services.transcription_tracking import transcription_tracker
+from src.utils.log_filters import loggable_error, loggable_locator, loggable_path
+from src.services import job_control
 
 # Configuration for internal sharing
 
@@ -72,7 +77,8 @@ from src.services.transcription_tracking import transcription_tracker
 # its KV cache on the summary call, prefilling only the short trailing suffix.
 #
 # Default off so existing deployments and prompt-quality behaviour are unchanged
-# unless explicitly opted in. Scope is title + summary only.
+# unless explicitly opted in. Scope is the title, summary, translation and
+# contextual speaker-identification prompts.
 PREFIX_CACHE_OPTIMIZED_PROMPTS = os.environ.get(
     'PREFIX_CACHE_OPTIMIZED_PROMPTS', 'false'
 ).lower() == 'true'
@@ -86,21 +92,19 @@ TEXT_MODEL_CACHE_BREAKPOINTS = os.environ.get(
     'TEXT_MODEL_CACHE_BREAKPOINTS', 'false'
 ).lower() == 'true'
 
+
+def prefix_cache_flags():
+    """The prefix-cache pair, read at call time.
+
+    Callers that lay out prompts (and tests that patch the module attributes)
+    must see the current values, so the flags are read when a prompt is built,
+    not captured at import. Every prompt-building site reads them here.
+    """
+    return PREFIX_CACHE_OPTIMIZED_PROMPTS, TEXT_MODEL_CACHE_BREAKPOINTS
+
+
 # Longest notes text given to the summarizer (#440)
 SUMMARY_NOTES_LIMIT = 8000
-
-def _user_content(prompt_text, transcript_text):
-    """User-message content for a prompt that may start with the shared prefix.
-
-    Reads the module-level flags so tests and deployments can toggle them, and
-    delegates the layout decision to the prompt module.
-    """
-    return build_user_content(
-        prompt_text,
-        transcript_text,
-        PREFIX_CACHE_OPTIMIZED_PROMPTS,
-        TEXT_MODEL_CACHE_BREAKPOINTS,
-    )
 
 
 def resolve_hotwords(hotwords, admin_default):
@@ -323,7 +327,7 @@ def _connector_specs_log(specs):
     )
 
 
-def finish_processing(recording_id, events_transcript=None, events_summary=None):
+def finish_processing(recording_id, events_transcript=None, events_summary=None, extract_events=True):
     """The last step of every processing path (#412).
 
     Extracts events (when the owner has event extraction on), marks the
@@ -335,6 +339,9 @@ def finish_processing(recording_id, events_transcript=None, events_summary=None)
     after COMPLETED are best-effort: a failure is logged and the recording
     stays COMPLETED. The Inquire chunks are built by the index workers, so the
     worker running this step is free for the next job.
+
+    extract_events=False leaves out the event extraction, an LLM call: a
+    canceled job whose transcript is kept finishes without one.
     """
     recording = db.session.get(Recording, recording_id)
     if not recording:
@@ -342,7 +349,7 @@ def finish_processing(recording_id, events_transcript=None, events_summary=None)
     loaded_created_at = recording.created_at
     from src.utils.error_formatting import is_transcription_error
     owner = recording.owner
-    if (owner and owner.extract_events and client is not None and recording.transcription
+    if (extract_events and owner and owner.extract_events and client is not None and recording.transcription
             and len(recording.transcription.strip()) >= 10 and not is_transcription_error(recording.transcription)):
         transcript = events_transcript or format_transcription_for_llm(recording.transcription)
         extract_events_from_transcript(recording_id, transcript, events_summary or "")
@@ -409,7 +416,9 @@ def generate_title_task(app_context, recording_id, will_auto_summarize=False):
         # The title step (naming template, AI title, fallbacks) is shared with the
         # regenerate-title endpoint so both produce the same title (#412).
         from src.services.titling import compute_title
+        job_control.current().check_cancel()  # before the LLM call
         final_title = compute_title(recording)
+        job_control.current().check_cancel()  # the title is dropped
         # The AI title is an LLM call: the recording may be gone, or its id
         # given to a new upload, by the time it returns (#597).
         _stop_if_recording_replaced(recording_id, loaded_created_at)
@@ -531,7 +540,8 @@ def _generate_ai_title(recording):
     # here too; otherwise the title prefills a plain transcript and the summary's
     # timestamped transcript can't reuse it, defeating the optimization.
     _t_owner = recording.owner
-    if PREFIX_CACHE_OPTIMIZED_PROMPTS and _t_owner and _t_owner.summary_include_timestamps:
+    prefix_cache_optimized, cache_breakpoints = prefix_cache_flags()
+    if prefix_cache_optimized and _t_owner and _t_owner.summary_include_timestamps:
         formatted_transcription = format_transcription_for_llm(
             recording.transcription,
             include_timestamps=True,
@@ -556,7 +566,7 @@ def _generate_ai_title(recording):
         transcript_text,
         title_instructions,
         user_output_language,
-        PREFIX_CACHE_OPTIMIZED_PROMPTS,
+        prefix_cache_optimized,
     )
 
     try:
@@ -565,7 +575,9 @@ def _generate_ai_title(recording):
         completion = call_llm_completion(
             messages=[
                 {"role": "system", "content": system_message_content},
-                {"role": "user", "content": _user_content(prompt_text, transcript_text)}
+                {"role": "user", "content": build_user_content(
+                    prompt_text, transcript_text,
+                    prefix_cache_optimized, cache_breakpoints)},
             ],
             temperature=llm_temperature,
             # TITLE_MAX_TOKENS lets reasoning-model users (e.g. Kimi K2) raise
@@ -608,8 +620,10 @@ def _generate_ai_title(recording):
         # catch it and skip titling gracefully (see generate_title_task).
         raise
     except Exception as e:
-        current_app.logger.error(f"Error generating AI title for recording {recording.id}: {str(e)}")
-        current_app.logger.error(f"Exception details:", exc_info=True)
+        # The provider's error text can quote the transcript: metadata at
+        # ERROR, the text and the traceback at DEBUG.
+        log_failure(current_app.logger, logging.ERROR,
+                    f"Error generating AI title for recording {recording.id}", e, traceback=True)
         return None
 
 
@@ -648,6 +662,7 @@ def generate_summary_only_task(app_context, recording_id, custom_prompt_override
         recording.status = 'SUMMARIZING'
         summarization_start_time = time.time()
         db.session.commit()
+        job_control.current().stage('summarizing')
 
         current_app.logger.info(f"Requesting summary from OpenRouter for recording {recording_id} using model {TEXT_MODEL_NAME}...")
 
@@ -781,12 +796,13 @@ def generate_summary_only_task(app_context, recording_id, custom_prompt_override
                     f'"""\n{owner_notes[:SUMMARY_NOTES_LIMIT]}\n"""'
                 )
 
+        prefix_cache_optimized, cache_breakpoints = prefix_cache_flags()
         system_message_content, prompt_text = build_summary_prompt(
             transcript_text,
             context_section,
             summarization_instructions,
             user_output_language,
-            PREFIX_CACHE_OPTIMIZED_PROMPTS,
+            prefix_cache_optimized,
         )
 
         # Debug logging: Log the complete prompt being sent to the LLM
@@ -799,11 +815,14 @@ def generate_summary_only_task(app_context, recording_id, custom_prompt_override
         owner_language = recording.owner.ui_language if recording.owner else None
         try:
             llm_temperature = get_temperature('summary')  # read before the transaction ends
+            job_control.current().check_cancel()  # a safe point before the LLM call
             _end_transaction_before_external_call(recording)
             completion = call_llm_completion(
                 messages=[
                     {"role": "system", "content": system_message_content},
-                    {"role": "user", "content": _user_content(prompt_text, transcript_text)}
+                    {"role": "user", "content": build_user_content(
+                        prompt_text, transcript_text,
+                        prefix_cache_optimized, cache_breakpoints)},
                 ],
                 temperature=llm_temperature,
                 max_tokens=int(os.environ.get("SUMMARY_MAX_TOKENS", "3000")),
@@ -814,6 +833,7 @@ def generate_summary_only_task(app_context, recording_id, custom_prompt_override
             # The recording may be gone, or its id given to a new upload,
             # by the time the LLM answers (#597).
             _stop_if_recording_replaced(recording_id, loaded_created_at)
+            job_control.current().check_cancel()  # the reply is dropped
 
             finish_reason, outcome = _completion_outcome(completion)
             current_app.logger.info(f"Summary LLM call for recording {recording_id}: {outcome}")
@@ -858,9 +878,14 @@ def generate_summary_only_task(app_context, recording_id, custom_prompt_override
         except Exception as e:
             if isinstance(e, EmptySummaryReply):
                 error_msg = f"[Summary generation failed: {e.user_message}]"
+                # Speakr's own diagnosis (finish reason, token counts): no content.
+                current_app.logger.error(f"Error generating summary for recording {recording_id}: {str(e)}")
             else:
-                error_msg = format_api_error_message(str(e))
-            current_app.logger.error(f"Error generating summary for recording {recording_id}: {str(e)}")
+                # The provider's short message, without what it repeats of
+                # the transcript or the prompt (src/utils/error_text.py).
+                error_msg = format_api_error_message(user_error_text(e, recording))
+                log_failure(current_app.logger, logging.ERROR,
+                            f"Error generating summary for recording {recording_id}", e)
             recording.summary = error_msg
             recording.status = 'FAILED'
             recording.error_message = sanitize_error_message(error_msg)
@@ -1202,7 +1227,8 @@ You must respond with valid JSON format only."""
                 )
 
     except Exception as e:
-        current_app.logger.error(f"Error extracting events for recording {recording_id}: {str(e)}")
+        log_failure(current_app.logger, logging.ERROR,
+                    f"Error extracting events for recording {recording_id}", e)
         db.session.rollback()
 
 
@@ -1288,7 +1314,7 @@ def extract_audio_from_video(video_filepath, output_format='mp3', cleanup_origin
 
         if AUDIO_COMPRESS_UPLOADS:
             # Re-encode to configured codec
-            current_app.logger.info(f"Extracting and compressing audio from video: {video_filepath} (codec: {AUDIO_CODEC})")
+            current_app.logger.info(f"Extracting and compressing audio from video: {loggable_path(video_filepath)} (codec: {AUDIO_CODEC})")
             audio_filepath, mime_type = ffmpeg_extract_audio(
                 video_filepath,
                 output_format=AUDIO_CODEC,
@@ -1299,7 +1325,7 @@ def extract_audio_from_video(video_filepath, output_format='mp3', cleanup_origin
             )
         elif can_copy_stream:
             # Copy audio stream without re-encoding (fast, preserves quality)
-            current_app.logger.info(f"Extracting audio from video (stream copy, no re-encoding): {video_filepath}")
+            current_app.logger.info(f"Extracting audio from video (stream copy, no re-encoding): {loggable_path(video_filepath)}")
             audio_filepath, mime_type = ffmpeg_extract_audio(
                 video_filepath,
                 output_format='copy',
@@ -1309,7 +1335,7 @@ def extract_audio_from_video(video_filepath, output_format='mp3', cleanup_origin
             )
         else:
             # Codec not supported - must re-encode for compatibility
-            current_app.logger.info(f"Extracting and converting audio from video: {video_filepath} (codec: {AUDIO_CODEC})")
+            current_app.logger.info(f"Extracting and converting audio from video: {loggable_path(video_filepath)} (codec: {AUDIO_CODEC})")
             audio_filepath, mime_type = ffmpeg_extract_audio(
                 video_filepath,
                 output_format=AUDIO_CODEC,
@@ -1319,17 +1345,17 @@ def extract_audio_from_video(video_filepath, output_format='mp3', cleanup_origin
                 allow_debug_copy=allow_debug_copy,
             )
 
-        current_app.logger.info(f"Successfully extracted audio to {audio_filepath}")
+        current_app.logger.info(f"Successfully extracted audio to {loggable_path(audio_filepath)}")
         return audio_filepath, mime_type
 
     except FFmpegNotFoundError as e:
         current_app.logger.error(str(e))
         raise Exception("Audio conversion tool (FFmpeg) not found on server.") from e
     except FFmpegError as e:
-        current_app.logger.error(f"FFmpeg audio extraction failed for {video_filepath}: {str(e)}")
+        current_app.logger.error(f"FFmpeg audio extraction failed for {loggable_path(video_filepath)}: {loggable_error(e, video_filepath)}")
         raise Exception(f"Audio extraction failed: {str(e)}") from e
     except Exception as e:
-        current_app.logger.error(f"Error extracting audio from {video_filepath}: {str(e)}")
+        current_app.logger.error(f"Error extracting audio from {loggable_path(video_filepath)}: {loggable_error(e, video_filepath)}")
         raise
 
 
@@ -1367,7 +1393,7 @@ def compress_lossless_audio(filepath, codec='mp3', bitrate='128k', codec_info=No
             return filepath, None
 
     except FFProbeError as e:
-        current_app.logger.warning(f"Failed to probe {filepath} for compression: {e}. Skipping compression.")
+        current_app.logger.warning(f"Failed to probe {loggable_path(filepath)} for compression: {loggable_error(e, filepath)}. Skipping compression.")
         return filepath, None
 
     # Determine output extension and MIME type
@@ -1392,7 +1418,7 @@ def compress_lossless_audio(filepath, codec='mp3', bitrate='128k', codec_info=No
         # Get original file size for logging
         original_size = os.path.getsize(filepath)
 
-        current_app.logger.info(f"Compressing {filepath} to {codec.upper()}...")
+        current_app.logger.info(f"Compressing {loggable_path(filepath)} to {codec.upper()}...")
 
         # Use centralized compression utility
         final_filepath, output_mime, _ = compress_audio(
@@ -1409,10 +1435,10 @@ def compress_lossless_audio(filepath, codec='mp3', bitrate='128k', codec_info=No
         current_app.logger.error(str(e))
         raise Exception("Audio conversion tool (FFmpeg) not found on server.")
     except FFmpegError as e:
-        current_app.logger.error(f"FFmpeg compression failed for {filepath}: {str(e)}")
+        current_app.logger.error(f"FFmpeg compression failed for {loggable_path(filepath)}: {loggable_error(e, filepath)}")
         raise Exception(f"Audio compression failed: {str(e)}")
     except Exception as e:
-        current_app.logger.error(f"Error compressing audio {filepath}: {str(e)}")
+        current_app.logger.error(f"Error compressing audio {loggable_path(filepath)}: {loggable_error(e, filepath)}")
         raise
 
 
@@ -1598,10 +1624,12 @@ def transcribe_chunks_with_connector(connector, filepath, filename, mime_type, l
     elif diarize and not supports_diarization:
         current_app.logger.warning("Diarization requested but connector doesn't support it - transcribing without diarization")
 
-    with tempfile.TemporaryDirectory() as temp_dir:
+    # The chunks of an incognito file stay in the folder of its request.
+    from src.services.incognito_temp import dir_for_temp_files
+    with tempfile.TemporaryDirectory(dir=dir_for_temp_files(filepath)) as temp_dir:
         try:
             # Create chunks (passes connector_specs for duration-based chunking if needed)
-            current_app.logger.info(f"Creating chunks for large file: {filepath}")
+            current_app.logger.info(f"Creating chunks for large file: {loggable_path(filepath)}")
             chunks = chunking_service.create_chunks(filepath, temp_dir, connector_specs)
 
             if not chunks:
@@ -1614,7 +1642,14 @@ def transcribe_chunks_with_connector(connector, filepath, filename, mime_type, l
             known_speaker_names = None
             known_speaker_refs = None  # Dict of speaker label -> data URL
 
+            # Chunks finished of chunks in total: a real number for the queue.
+            job = job_control.current()
+            job.report(0, len(chunks), job_control.KIND_CHUNKS)
+            chunk_cancel = job.cancel_requested if job.job_id else None
+
             for i, chunk in enumerate(chunks):
+                # A safe point between chunks: nothing of this run is stored yet.
+                job.check_cancel()
                 max_retries = 3
                 retry_count = 0
                 success = False
@@ -1625,7 +1660,7 @@ def transcribe_chunks_with_connector(connector, filepath, filename, mime_type, l
                 while retry_count < max_retries and not success:
                     try:
                         retry_suffix = f" (retry {retry_count + 1}/{max_retries})" if retry_count > 0 else ""
-                        current_app.logger.info(f"Processing chunk {i+1}/{len(chunks)}: {chunk['filename']} ({chunk['size_mb']:.1f}MB){retry_suffix}")
+                        current_app.logger.info(f"Processing chunk {i+1}/{len(chunks)}: {loggable_path(chunk['filename'])} ({chunk['size_mb']:.1f}MB){retry_suffix}")
 
                         # Transcribe chunk using connector
                         with open(chunk['path'], 'rb') as chunk_file:
@@ -1644,6 +1679,7 @@ def transcribe_chunks_with_connector(connector, filepath, filename, mime_type, l
                                     hotwords=hotwords,
                                     model=transcription_model,
                                     task_key=chunk_task_key,
+                                    should_cancel=chunk_cancel,
                                 )
                             else:
                                 request = TranscriptionRequest(
@@ -1656,6 +1692,7 @@ def transcribe_chunks_with_connector(connector, filepath, filename, mime_type, l
                                     hotwords=hotwords,
                                     model=transcription_model,
                                     task_key=chunk_task_key,
+                                    should_cancel=chunk_cancel,
                                 )
 
                             response = connector.transcribe(request)
@@ -1682,9 +1719,18 @@ def transcribe_chunks_with_connector(connector, filepath, filename, mime_type, l
                                 # Convert to data URLs for the API
                                 known_speaker_refs = samples_to_data_urls(speaker_samples)
                                 known_speaker_names = list(known_speaker_refs.keys())
-                                current_app.logger.info(f"Extracted speaker references for {len(known_speaker_names)} speakers: {known_speaker_names}")
+                                current_app.logger.info(f"Extracted speaker references for {len(known_speaker_names)} speakers")
+                                current_app.logger.debug(f"Speaker references: {known_speaker_names}")
                             else:
                                 current_app.logger.warning("Could not extract speaker samples from first chunk")
+
+                        # The speaker samples above are keyed by the labels of
+                        # the service, which the next chunks are sent. The merge
+                        # numbers the speakers of each chunk after those of the
+                        # chunks before it, so the labels are brought to
+                        # SPEAKER_NN here, chunk by chunk.
+                        if use_diarization and hasattr(response, 'normalize_speaker_labels'):
+                            response.normalize_speaker_labels()
 
                         # Store chunk result
                         chunk_result = {
@@ -1707,19 +1753,25 @@ def transcribe_chunks_with_connector(connector, filepath, filename, mime_type, l
                         error_msg = str(chunk_error)
 
                         if retry_count < max_retries:
+                            job.check_cancel()
                             wait_time = 15 if "timeout" not in error_msg.lower() else 30
-                            current_app.logger.warning(f"Chunk {i+1} failed (attempt {retry_count}/{max_retries}): {chunk_error}. Retrying in {wait_time}s...")
+                            log_failure(current_app.logger, logging.WARNING,
+                                        f"Chunk {i+1} failed (attempt {retry_count}/{max_retries}), retrying in {wait_time}s",
+                                        chunk_error)
                             time.sleep(wait_time)
                         else:
-                            current_app.logger.error(f"Chunk {i+1} failed after {max_retries} attempts: {chunk_error}")
+                            log_failure(current_app.logger, logging.ERROR,
+                                        f"Chunk {i+1} failed after {max_retries} attempts", chunk_error)
                             chunk_result = {
                                 'index': chunk['index'],
                                 'start_time': chunk['start_time'],
                                 'end_time': chunk['end_time'],
-                                'transcription': f"[Chunk {i+1} transcription failed: {str(chunk_error)}]",
+                                'transcription': f"[Chunk {i+1} transcription failed: {user_error_text(chunk_error, extra_sources=(filename, initial_prompt, hotwords), limit=300)}]",
                                 'filename': chunk['filename']
                             }
                             chunk_results.append(chunk_result)
+
+                job.report(i + 1, len(chunks), job_control.KIND_CHUNKS)
 
                 # Small delay between chunks
                 if i < len(chunks) - 1:
@@ -1761,10 +1813,23 @@ def transcribe_chunks_with_connector(connector, filepath, filename, mime_type, l
                 return merged_transcription
 
         except Exception as e:
-            current_app.logger.error(f"Chunking transcription failed for {filepath}: {e}")
+            log_failure(current_app.logger, logging.ERROR, "Chunking transcription failed", e)
+            current_app.logger.debug(f"Chunking transcription failed for {filepath}")
             if 'chunks' in locals():
                 chunking_service.cleanup_chunks(chunks)
             raise ChunkProcessingError(f"Chunked transcription failed: {str(e)}")
+
+
+def _remove_derived_temp_files(filepath, *derived):
+    """Remove the converted or extracted copies a transcription made of ``filepath``."""
+    for path in derived:
+        if path and path != filepath:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+                    current_app.logger.debug(f"Cleaned up temp file of a stopped transcription: {path}")
+            except OSError:
+                pass
 
 
 def transcribe_with_connector(app_context, recording_id, filepath, original_filename, start_time, mime_type=None, language=None, diarize=None, min_speakers=None, max_speakers=None, tag_id=None, hotwords=None, initial_prompt=None, transcription_model=None):
@@ -1881,9 +1946,9 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
             try:
                 is_video = is_video_file(filepath, timeout=10)
                 if is_video:
-                    current_app.logger.info(f"Video detected for {original_filename}")
+                    current_app.logger.info(f"Video detected for recording {recording_id} ({loggable_path(original_filename)})")
             except FFProbeError as e:
-                current_app.logger.warning(f"Failed to probe {original_filename}: {e}. Falling back to MIME type detection.")
+                current_app.logger.warning(f"Failed to probe the file of recording {recording_id} ({loggable_path(original_filename)}): {loggable_error(e, original_filename, filepath)}. Falling back to MIME type detection.")
                 video_mime_types = [
                     'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm',
                     'video/avi', 'video/x-ms-wmv', 'video/3gpp'
@@ -1934,7 +1999,7 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
                         except Exception as duration_err:
                             current_app.logger.warning(f"Could not determine extracted audio duration for recording {recording.id}: {duration_err}")
                         db.session.commit()
-                        current_app.logger.info(f"Video retained (media path unchanged), temp audio extracted: {audio_filepath}")
+                        current_app.logger.info(f"Video retained (media path unchanged), temp audio extracted: {loggable_path(audio_filepath)}")
                     except Exception as e:
                         current_app.logger.error(f"Failed to extract audio from video: {str(e)}")
                         recording.status = 'FAILED'
@@ -1975,14 +2040,14 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
                             except Exception as duration_err:
                                 current_app.logger.warning(f"Could not determine extracted audio duration for recording {recording.id}: {duration_err}")
                             db.session.commit()
-                            current_app.logger.info(f"Audio extracted and stored: {stored_audio.locator}")
+                            current_app.logger.info(f"Audio extracted and stored: {loggable_locator(stored_audio.locator)}")
 
                             # Best-effort cleanup of previous stored source (e.g. original video)
                             if old_audio_locator and old_audio_locator != stored_audio.locator:
                                 try:
                                     storage.delete(old_audio_locator, missing_ok=True)
                                 except Exception as cleanup_err:
-                                    current_app.logger.warning(f"Failed to delete original source after audio extraction: {cleanup_err}")
+                                    current_app.logger.warning(f"Failed to delete original source after audio extraction: {loggable_error(cleanup_err, old_audio_locator)}")
                         except Exception:
                             # Do NOT persist temporary extracted path in DB. Keep previous locator and continue
                             # processing with the local extracted file for this job only.
@@ -1992,7 +2057,7 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
                                 "Failed to persist extracted audio via storage layer; keeping previous recording.audio_path and continuing with temporary local file",
                                 exc_info=True,
                             )
-                        current_app.logger.info(f"Audio extracted: {audio_filepath}")
+                        current_app.logger.info(f"Audio extracted: {loggable_path(audio_filepath)}")
                     except Exception as e:
                         current_app.logger.error(f"Failed to extract audio from video: {str(e)}")
                         recording.status = 'FAILED'
@@ -2080,12 +2145,17 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
             max_attempts = 2
             last_error = None
 
+            # 'transcribing' is the stage of a transcription job until its
+            # worker reports another one, so nothing is written here.
+            job = job_control.current()
             for attempt in range(max_attempts):
                 try:
+                    # A safe point: nothing was sent to the service yet.
+                    job.check_cancel()
                     if should_chunk:
                         # Use chunking for large files
                         file_size_mb = os.path.getsize(actual_filepath) / (1024 * 1024)
-                        current_app.logger.info(f"File {actual_filepath} is large ({file_size_mb:.1f}MB), using chunking for transcription")
+                        current_app.logger.info(f"File {loggable_path(actual_filepath)} is large ({file_size_mb:.1f}MB), using chunking for transcription")
                         _end_transaction_before_external_call(recording)
                         chunk_result = transcribe_chunks_with_connector(
                             connector, actual_filepath, actual_filename, actual_content_type, language,
@@ -2095,6 +2165,8 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
                             transcription_model=transcription_model,
                             task_scope=f"speakr-{recording.id}" if recording else None,
                         )
+                        # A safe point: the result is dropped, nothing of it is stored.
+                        job.check_cancel()
 
                         recording.transcription_language = normalize_language_code(
                             getattr(chunk_result, 'language', None))
@@ -2149,6 +2221,8 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
                                 save_provider_task=save_provider_task,
                                 task_key=task_key,
                                 report_progress=report_progress,
+                                report_stage=job.detail if job.job_id else None,
+                                should_cancel=job.cancel_requested if job.job_id else None,
                             )
 
                             current_app.logger.info(
@@ -2166,6 +2240,9 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
                                 if funasr_active:
                                     cleanup_funasr_staging(recording)
 
+                        # A safe point: the result is dropped, nothing of it is stored.
+                        job.check_cancel()
+
                         # Record the language the service reported for this
                         # audio. Normalised because backends differ on whether
                         # they return 'en' or 'english', and normalisation
@@ -2176,7 +2253,10 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
 
                         # Store the result
                         if response.segments and response.has_diarization():
-                            # Store as JSON with segments (diarized format)
+                            # Store as JSON with segments (diarized format).
+                            # The labels are normalized to SPEAKER_NN in the
+                            # response itself, so the embeddings stored below
+                            # carry the same keys as the segments.
                             recording.transcription = response.to_storage_format()
                             current_app.logger.info(f"Transcription completed with {len(response.segments)} segments and {len(response.speakers or [])} speakers")
                         else:
@@ -2228,7 +2308,8 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
 
                     # Only retry with MP3 conversion on first attempt for format errors
                     if attempt == 0 and is_format_error and not converted_filepath and not getattr(connector_specs, 'preserve_original_audio', False):
-                        current_app.logger.warning(f"Transcription failed with possible format error: {e}")
+                        log_failure(current_app.logger, logging.WARNING,
+                                    f"Transcription of recording {recording_id} failed with possible format error", e)
                         current_app.logger.info(f"Attempting MP3 conversion and retry...")
 
                         # Check if file is already MP3
@@ -2242,7 +2323,7 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
                         if needs_conversion:
                             try:
                                 converted_filepath = convert_to_mp3(actual_filepath)
-                                current_app.logger.info(f"Successfully converted to MP3: {converted_filepath}")
+                                current_app.logger.info(f"Successfully converted to MP3: {loggable_path(converted_filepath)}")
                                 actual_filepath = converted_filepath
                                 actual_content_type = 'audio/mpeg'
                                 actual_filename = os.path.basename(converted_filepath)
@@ -2310,7 +2391,7 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
                 try:
                     if os.path.exists(audio_filepath):
                         os.remove(audio_filepath)
-                        current_app.logger.info(f"Cleaned up temp audio extracted from video: {audio_filepath}")
+                        current_app.logger.info(f"Cleaned up temp audio extracted from video: {loggable_path(audio_filepath)}")
                 except OSError:
                     pass  # Best effort cleanup
 
@@ -2386,7 +2467,9 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
                         speaker_map = apply_auto_speaker_labels(recording, label_user)
 
                         if speaker_map:
-                            current_app.logger.info(f"Auto-matched speakers: {speaker_map}")
+                            current_app.logger.info(
+                                f"Auto-matched {len(speaker_map)} speakers of recording {recording_id}")
+                            current_app.logger.debug(f"Auto-matched speakers: {speaker_map}")
                             if apply_speaker_names_to_transcription(recording, speaker_map):
                                 current_app.logger.info(f"Applied speaker names to transcription")
                                 updated_count = update_speaker_profiles_from_recording(recording, speaker_map, label_user)
@@ -2422,8 +2505,15 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
             no_client = client is None
             will_auto_summarize = not admin_disabled and not user_disabled and not no_client
 
-            # Generate title immediately
+            # Generate title immediately. A cancel from here on keeps the
+            # transcript, which is complete, and skips the title and the summary.
             _stop_if_recording_replaced(recording_id, loaded_created_at)
+            job.check_cancel()
+            # The speaker labels above are written before the stage is: the
+            # stage goes through another connection, which on SQLite would
+            # wait for this session's open write.
+            db.session.commit()
+            job.stage('titling')
             generate_title_task(app_context, recording_id, will_auto_summarize=will_auto_summarize)
 
             if not will_auto_summarize:
@@ -2436,14 +2526,15 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
                 current_app.logger.info(f"Auto-generating summary for recording {recording_id}")
                 from src.services.error_classification import SummaryStepFailed
                 _stop_if_recording_replaced(recording_id, loaded_created_at)
+                job.check_cancel()
                 try:
                     generate_summary_only_task(app_context, recording_id)
                 except SummaryStepFailed as summary_err:
                     # The transcript is saved, so the transcription job still
                     # completes; the recording stays FAILED with the summary
                     # error, and a summary reprocess recovers it (#583).
-                    current_app.logger.error(
-                        f"Auto-summary failed for recording {recording_id}; transcript kept: {summary_err}")
+                    log_failure(current_app.logger, logging.ERROR,
+                                f"Auto-summary failed for recording {recording_id}; transcript kept", summary_err)
                     from src.services.webhook_dispatch import emit_summary_result
                     emit_summary_result(db.session.get(Recording, recording_id), ok=False,
                                         error=summary_err.stored_summary)
@@ -2483,6 +2574,13 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
             except Exception as auto_translate_err:
                 current_app.logger.warning(f"Auto-translation trigger failed for recording {recording_id}: {auto_translate_err}")
 
+        except job_control.JobCanceled:
+            # Not a failure: nothing pending is written, the derived temp
+            # files go, and the job queue puts the recording back.
+            db.session.rollback()
+            _remove_derived_temp_files(filepath, locals().get('converted_filepath'), locals().get('audio_filepath'))
+            current_app.logger.info(f"Transcription of recording {recording_id} stopped: its job was canceled")
+            raise
         except Exception as e:
             db.session.rollback()
             if isinstance(e, RecordingDeletedDuringJob) or _recording_deleted(recording_id, loaded_created_at):
@@ -2491,7 +2589,8 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
                 raise
             error_msg = str(e)
             error_type = type(e).__name__
-            current_app.logger.error(f"Connector transcription FAILED for recording {recording_id}: [{error_type}] {error_msg}", exc_info=True)
+            log_failure(current_app.logger, logging.ERROR,
+                        f"Connector transcription FAILED for recording {recording_id}", e, traceback=True)
 
             # Handle timeout errors specifically - log the configured timeout for debugging
             if "timed out" in error_msg.lower() or "timeout" in error_msg.lower() or "Timeout" in error_type:
@@ -2514,14 +2613,7 @@ def transcribe_with_connector(app_context, recording_id, filepath, original_file
             # error skips straight here — previously orphaning the converted MP3
             # and the retained-video extracted audio (up to one per retry) in
             # UPLOAD_FOLDER on the local backend.
-            for _tmp in (locals().get('converted_filepath'), locals().get('audio_filepath')):
-                if _tmp and _tmp != filepath:
-                    try:
-                        if os.path.exists(_tmp):
-                            os.remove(_tmp)
-                            current_app.logger.debug(f"Cleaned up temp file on failure path: {_tmp}")
-                    except OSError:
-                        pass
+            _remove_derived_temp_files(filepath, locals().get('converted_filepath'), locals().get('audio_filepath'))
 
             # Don't set recording.status = 'FAILED' here - let the job queue handle it
             # The job queue will decide whether to retry or permanently fail,
@@ -2647,7 +2739,18 @@ def transcribe_incognito(filepath, original_filename, language=None, min_speaker
 
         connector_specs = connector.specifications
         connector_name = type(connector).__name__
-        current_app.logger.info(f"[Incognito] Using transcription connector: {connector_name}")
+        incognito_log.info(f"[Incognito] Using transcription connector: {connector_name}")
+
+        # The monthly transcription budget applies to an incognito request as
+        # to any other. The route checks it before the upload is saved; this
+        # check covers every other caller.
+        if user is not None and getattr(user, 'id', None):
+            can_proceed, _usage_pct, budget_msg = transcription_tracker.check_budget(user.id)
+            if not can_proceed:
+                incognito_log.warning(f"[Incognito] User {user.id} exceeded the transcription budget")
+                result['error'] = budget_msg
+                result['error_code'] = 'transcription_budget_exceeded'
+                return result
 
         # Determine mime type from the real filename, but use an anonymized
         # name (extension only) everywhere downstream: the shared conversion
@@ -2673,7 +2776,7 @@ def transcribe_incognito(filepath, original_filename, language=None, min_speaker
             _codec_info = get_codec_info(filepath, timeout=10)
             is_video = bool(_codec_info.get('has_video')) and has_audio_stream(_codec_info)
         except FFProbeError as e:
-            current_app.logger.warning(f"[Incognito] Failed to probe file: {e}")
+            incognito_log.warning(f"[Incognito] Failed to probe file: {describe_error(e)}")
             if not probe_rejected_input(e):
                 video_extensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.flv', '.m4v']
                 is_video = any(original_filename.lower().endswith(ext) for ext in video_extensions)
@@ -2682,9 +2785,9 @@ def transcribe_incognito(filepath, original_filename, language=None, min_speaker
 
         if is_video:
             if _self.VIDEO_PASSTHROUGH_ASR:
-                current_app.logger.info(f"[Incognito] Video passthrough: sending original video to ASR (no audio extraction)")
+                incognito_log.info(f"[Incognito] Video passthrough: sending original video to ASR (no audio extraction)")
             else:
-                current_app.logger.info(f"[Incognito] Video detected, extracting audio...")
+                incognito_log.info(f"[Incognito] Video detected, extracting audio...")
                 try:
                     # allow_debug_copy=False: the PRESERVE_TEMP_AUDIO debug copy
                     # is untracked by incognito cleanup and would retain audio.
@@ -2696,7 +2799,7 @@ def transcribe_incognito(filepath, original_filename, language=None, min_speaker
                     if audio_filepath and audio_filepath != filepath:
                         _incognito_derived_files.append(audio_filepath)
                 except Exception as e:
-                    current_app.logger.error(f"[Incognito] Failed to extract audio from video: {e}")
+                    incognito_log.error(f"[Incognito] Failed to extract audio from video: {describe_error(e)}")
                     # The message carries FFmpeg's output (its build and the
                     # temp path): answer from the FFmpeg error it wraps, or
                     # with a fixed message (#482).
@@ -2708,7 +2811,7 @@ def transcribe_incognito(filepath, original_filename, language=None, min_speaker
 
         # Convert audio format if needed
         if video_passthrough_active:
-            current_app.logger.info(f"[Incognito] Video passthrough: skipping codec conversion")
+            incognito_log.info(f"[Incognito] Video passthrough: skipping codec conversion")
         else:
             try:
                 needs_chunking_check = (
@@ -2726,10 +2829,13 @@ def transcribe_incognito(filepath, original_filename, language=None, min_speaker
                 )
 
                 if conversion_result.was_converted:
-                    current_app.logger.info(f"[Incognito] Audio converted: {conversion_result.original_codec} -> {conversion_result.final_codec}")
-                    out_path = conversion_result.output_path
-                    if out_path and out_path not in (filepath, actual_filepath):
-                        _incognito_derived_files.append(out_path)
+                    incognito_log.info(f"[Incognito] Audio converted: {conversion_result.original_codec} -> {conversion_result.final_codec}")
+                # Every file the conversion wrote is removed afterwards: a
+                # converted one, and also a remuxed or a compressed one,
+                # which was_converted does not name.
+                out_path = conversion_result.output_path
+                if out_path and out_path not in (filepath, actual_filepath):
+                    _incognito_derived_files.append(out_path)
                 actual_filepath = conversion_result.output_path
                 actual_content_type = conversion_result.mime_type
                 actual_filename = os.path.basename(conversion_result.output_path)
@@ -2738,14 +2844,14 @@ def transcribe_incognito(filepath, original_filename, language=None, min_speaker
                 # not sent to the transcription service as it is.
                 raise
             except Exception as e:
-                current_app.logger.warning(f"[Incognito] Audio conversion check failed: {e}, proceeding with original")
+                incognito_log.warning(f"[Incognito] Audio conversion check failed: {describe_error(e)}, proceeding with original")
 
         # Get audio duration if chunking service is available
         if chunking_service:
             try:
                 result['audio_duration_seconds'] = int(chunking_service.get_audio_duration(actual_filepath))
             except Exception as e:
-                current_app.logger.warning(f"[Incognito] Could not get audio duration: {e}")
+                incognito_log.warning(f"[Incognito] Could not get audio duration: {describe_error(e)}")
 
         # Determine diarization settings (respects ASR_DIARIZE env var)
         should_diarize = getattr(connector, 'default_diarize', connector.supports_diarization)
@@ -2774,14 +2880,14 @@ def transcribe_incognito(filepath, original_filename, language=None, min_speaker
         # Check if chunking is needed
         if video_passthrough_active:
             should_chunk = False
-            current_app.logger.info(f"[Incognito] Video passthrough: chunking skipped (ASR backend handles internally)")
+            incognito_log.info(f"[Incognito] Video passthrough: chunking skipped (ASR backend handles internally)")
         else:
             should_chunk = (chunking_service and
                            chunking_service.needs_chunking(actual_filepath, False, connector_specs))
 
         # Same model an upload would get, so a service without its own default
         # model works in incognito mode too (#409).
-        current_app.logger.info(f"[Incognito] Starting transcription: diarize={should_diarize}, language={language}, chunking={should_chunk}")
+        incognito_log.info(f"[Incognito] Starting transcription: diarize={should_diarize}, language={short_code(language)}, chunking={should_chunk}")
 
         # Names the user in the task key, so the same audio sent again by the
         # same user attaches to a job the service still holds.
@@ -2830,7 +2936,8 @@ def transcribe_incognito(filepath, original_filename, language=None, min_speaker
             result['transcription'] = None
             result['error'] = EMPTY_TRANSCRIPT_MESSAGE
             return result
-        current_app.logger.info(f"[Incognito] Transcription completed in {result['processing_time_seconds']}s")
+        incognito_log.info(f"[Incognito] Transcription completed in {result['processing_time_seconds']}s")
+        _record_incognito_transcription_usage(user, connector, actual_filepath, result['audio_duration_seconds'])
 
         # Generate a title if we have transcription
         if result['transcription'] and len(result['transcription']) > 10:
@@ -2839,7 +2946,7 @@ def transcribe_incognito(filepath, original_filename, language=None, min_speaker
         return result
 
     except Exception as e:
-        current_app.logger.error(f"[Incognito] Transcription failed: {str(e)}", exc_info=True)
+        incognito_log.error(f"[Incognito] Transcription failed: {describe_error(e)}")
         # FFmpeg's output names its build and the temp path (#482): the
         # response gets a fixed message instead.
         if isinstance(e, FFmpegNotFoundError):
@@ -2872,9 +2979,38 @@ def transcribe_incognito(filepath, original_filename, language=None, min_speaker
                 try:
                     if os.path.exists(_tmp):
                         os.remove(_tmp)
-                        current_app.logger.info(f"[Incognito] Derived temp file deleted: {_tmp}")
+                        incognito_log.info(f"[Incognito] Derived temp file deleted: {_tmp}")
                 except OSError as _e:
-                    current_app.logger.error(f"[Incognito] Failed to delete derived temp file {_tmp}: {_e}")
+                    incognito_log.error(f"[Incognito] Failed to delete derived temp file {_tmp}: {describe_error(_e)}")
+
+
+def _record_incognito_transcription_usage(user, connector, audio_path, duration_seconds):
+    """Count an incognito transcription against the user's monthly budget.
+
+    The same daily usage row as an ordinary transcription: user id, date,
+    connector, model, seconds, cost and request count. The row holds no
+    title, no filename, no content and no recording id.
+    """
+    user_id = getattr(user, 'id', None)
+    if not user_id:
+        return
+    try:
+        duration = duration_seconds
+        if (not duration or duration <= 0) and chunking_service and audio_path and os.path.exists(audio_path):
+            duration = chunking_service.get_audio_duration(audio_path)
+        if not duration or duration <= 0:
+            incognito_log.warning("[Incognito] Could not determine audio duration for usage tracking")
+            return
+        connector_type = getattr(connector, 'PROVIDER_NAME', None) or type(connector).__name__
+        transcription_tracker.record_usage(
+            user_id=user_id,
+            connector_type=connector_type,
+            audio_duration_seconds=int(duration),
+            model_name=getattr(connector, 'model', None) or connector_type,
+        )
+        incognito_log.info(f"[Incognito] Recorded transcription usage: {int(duration)}s for user {user_id}")
+    except Exception as e:
+        incognito_log.warning(f"[Incognito] Failed to record transcription usage: {describe_error(e)}")
 
 
 def _generate_incognito_title(transcription_text, user=None):
@@ -2903,7 +3039,8 @@ def _generate_incognito_title(transcription_text, user=None):
             False,
         )
 
-        # No user_id, so nothing is tracked for incognito
+        # Counted against the user's monthly token budget, as for a stored
+        # recording: the usage row holds numbers and the model name only.
         completion = call_llm_completion(
             messages=[
                 {"role": "system", "content": system_message_content},
@@ -2912,7 +3049,9 @@ def _generate_incognito_title(transcription_text, user=None):
             temperature=get_temperature('title'),
             # Match the main title-generation path so reasoning-model users
             # have a single knob (TITLE_MAX_TOKENS) that covers both flows.
-            max_tokens=int(os.environ.get("TITLE_MAX_TOKENS", "5000"))
+            max_tokens=int(os.environ.get("TITLE_MAX_TOKENS", "5000")),
+            user_id=getattr(user, 'id', None),
+            operation_type='title_generation'
         )
 
         raw_response = completion.choices[0].message.content
@@ -2922,13 +3061,16 @@ def _generate_incognito_title(transcription_text, user=None):
             return title.strip()
 
     except Exception as e:
-        current_app.logger.warning(f"[Incognito] Title generation failed: {e}")
+        incognito_log.warning(f"[Incognito] Title generation failed: {describe_error(e)}")
 
     return "Incognito Recording"
 
 
 def generate_incognito_summary(transcription_text, user=None):
-    """Generate a summary for incognito recording without database storage."""
+    """Generate a summary for incognito recording without database storage.
+
+    Raises TokenBudgetExceeded when the user's monthly token budget is used up.
+    """
     if not client:
         return None
 
@@ -2964,27 +3106,33 @@ def generate_incognito_summary(transcription_text, user=None):
             user_output_language,
         )
 
-        current_app.logger.info(f"[Incognito] Generating summary...")
+        incognito_log.info(f"[Incognito] Generating summary...")
 
-        # No user_id, so nothing is tracked for incognito
+        # Counted against the user's monthly token budget, as for a stored
+        # recording: the usage row holds numbers and the model name only.
         completion = call_llm_completion(
             messages=[
                 {"role": "system", "content": system_message_content},
                 {"role": "user", "content": prompt_text}
             ],
             temperature=get_temperature('summary'),
-            max_tokens=int(os.environ.get("SUMMARY_MAX_TOKENS", "3000"))
+            max_tokens=int(os.environ.get("SUMMARY_MAX_TOKENS", "3000")),
+            user_id=getattr(user, 'id', None),
+            operation_type='summarization'
         )
 
         raw_response = completion.choices[0].message.content
         summary = clean_llm_response(raw_response) if raw_response else None
 
         if summary:
-            current_app.logger.info(f"[Incognito] Summary generated: {len(summary)} characters")
+            incognito_log.info(f"[Incognito] Summary generated: {len(summary)} characters")
             return summary
 
+    except TokenBudgetExceeded:
+        incognito_log.warning(f"[Incognito] Token budget exceeded for user {getattr(user, 'id', None)}")
+        raise
     except Exception as e:
-        current_app.logger.warning(f"[Incognito] Summary generation failed: {e}")
+        incognito_log.warning(f"[Incognito] Summary generation failed: {describe_error(e)}")
 
     return None
 

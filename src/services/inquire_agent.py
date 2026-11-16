@@ -35,6 +35,7 @@ from src.services.embeddings import (
 )
 from src.services.llm import call_chat_completion, TokenBudgetExceeded, get_chat_config
 from src.utils.localization import translate
+from src.utils.error_text import log_failure, user_error_text
 from src.services.recording_chat import WORDS_BEFORE_CITATIONS_RULE
 from src.services.assistant_present import (step_label, step_result, summary_label, summary_line,
                                               tool_icon)
@@ -270,7 +271,8 @@ def tool_search_transcripts(ctx, args):
             return {'query': query, 'search_type': 'none', 'result_count': 0, 'results': [],
                     'note': ' '.join(notes) or 'No recording in scope matches these tags and folder.'}
         filters['recording_ids'] = sorted(narrowed)
-    speakers = _name_list(args.get('speakers'))
+    from src.utils.speaker_labels import real_speaker_names
+    speakers = real_speaker_names(_name_list(args.get('speakers')))
     if speakers:
         filters['speaker_names'] = speakers
     for key, arg in (('date_from', 'date_from'), ('date_to', 'date_to')):
@@ -609,7 +611,8 @@ def tool_search_text(ctx, args):
     if err:
         return {'error': err}
     q = db.session.query(Recording.id).filter(Recording.id.in_(ids)) if ids else None
-    speakers = _name_list(args.get('speakers'))
+    from src.utils.speaker_labels import real_speaker_names
+    speakers = real_speaker_names(_name_list(args.get('speakers')))
     if q is not None and speakers:
         q = q.filter(db.or_(*[Recording.participants.ilike(contains_pattern(s), escape=LIKE_ESCAPE)
                               for s in speakers]))
@@ -1538,7 +1541,7 @@ def run_inquire_agent(app, user_id, user_ctx, user_message, message_history,
                 allowed_ids = set(allowed_ids) | {recording_scope['recording_id']}
             schemas, executors = build_toolbox(availability, tool_names)
         except Exception as e:
-            app.logger.error(f"Inquire agent setup failed: {e}", exc_info=True)
+            log_failure(app.logger, 'error', f"Inquire agent setup failed for user {user_id}", e, traceback=True)
             if legacy_fallback is not None:
                 yield from legacy_fallback()
                 return
@@ -1699,7 +1702,7 @@ def run_inquire_agent(app, user_id, user_ctx, user_message, message_history,
                     try:
                         result = executors[name](tool_ctx, args)
                     except Exception as e:
-                        app.logger.warning(f"Inquire agent tool {name} failed: {e}", exc_info=True)
+                        log_failure(app.logger, 'warning', f"Inquire agent tool {name} failed", e, traceback=True)
                         result = {'error': f"tool failed: {e}"}
                     call_cache[cache_key] = result
                     tool_counts[name] = tool_counts.get(name, 0) + 1
@@ -1751,13 +1754,13 @@ def run_inquire_agent(app, user_id, user_ctx, user_message, message_history,
                         and not produced_answer:
                     # Tool calls rejected in the recording panel: retried
                     # once without tools, as the transcript-only answer.
-                    app.logger.info(f"Tool call rejected in the recording chat; answering without tools: {e}")
+                    log_failure(app.logger, 'info', "Tool call rejected in the recording chat; answering without tools", e)
                     if _tool_mode() == 'auto' and _native_tools_known_unsupported(str(e)):
                         _NATIVE_TOOLS_SUPPORTED[mode_key] = False
                     yield from legacy_fallback()
                     return
                 if mode == 'native' and _tool_mode() == 'auto' and _native_tools_known_unsupported(str(e)):
-                    app.logger.info(f"Native tool calling unsupported by endpoint; switching to prompt mode: {e}")
+                    log_failure(app.logger, 'info', "Native tool calling unsupported by endpoint; switching to prompt mode", e)
                     _NATIVE_TOOLS_SUPPORTED[mode_key] = False
                     mode = 'prompt'
                     messages = build_messages(mode, memory, history)
@@ -1898,14 +1901,14 @@ def run_inquire_agent(app, user_id, user_ctx, user_message, message_history,
     except TokenBudgetExceeded as e:
         yield _sse({'error': str(e), 'budget_exceeded': True})
     except Exception as e:
-        app.logger.error(f"Inquire agent failed: {e}", exc_info=True)
+        log_failure(app.logger, 'error', f"Inquire agent failed for user {user_id}", e, traceback=True)
         if not produced_answer and legacy_fallback is not None:
             app.logger.info("Falling back to the single-shot Inquire pipeline")
             try:
                 yield from legacy_fallback()
                 return
             except Exception as fe:
-                app.logger.error(f"Legacy fallback also failed: {fe}")
-        yield _sse({'error': str(e)})
+                log_failure(app.logger, 'error', "Legacy fallback also failed", fe)
+        yield _sse({'error': user_error_text(e, extra_sources=[user_message] if isinstance(user_message, str) else ())})
     finally:
         ctx.pop()

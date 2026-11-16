@@ -10,6 +10,7 @@ from src.database import db
 from src.models import Recording, RecordingTag, Tag
 from src.services.storage import get_storage_service
 from src.utils.localization import api_error
+from src.utils.log_filters import loggable_locator
 
 
 
@@ -173,7 +174,7 @@ def process_auto_deletion():
                 if _self.DELETION_MODE == 'audio_only':
                     # Delete only the audio file, keep transcription
                     current_app.logger.info(f"Recording {recording.id} is past retention ({retention_days} days), removing audio")
-                    if remove_recording_audio(recording):
+                    if remove_recording_audio(recording, reason='retention'):
                         stats['deleted_audio_only'] += 1
 
                 else:  # full_recording mode
@@ -221,7 +222,7 @@ def process_auto_deletion():
 # Use environment variables from .env
 
 
-def remove_recording_audio(recording):
+def remove_recording_audio(recording, reason='user'):
     """Delete a recording's media file and keep everything else.
 
     The transcript, summary, notes, tags and shares stay; the recording shows
@@ -235,12 +236,14 @@ def remove_recording_audio(recording):
     deleted = False
     if recording.audio_path and storage.exists(recording.audio_path):
         storage.delete(recording.audio_path, missing_ok=True)
-        current_app.logger.info(f"Removed audio file for recording {recording.id}: {recording.audio_path}")
+        current_app.logger.info(f"Removed audio file for recording {recording.id}: {loggable_locator(recording.audio_path)}")
         deleted = True
     from src.services.waveform_peaks import remove_peaks
     remove_peaks(current_app.config.get('UPLOAD_FOLDER') or '', recording.id)
     if not recording.audio_deleted_at:
         recording.audio_deleted_at = datetime.utcnow()
+    from src.services import audit
+    audit.record_in_tx('recording.audio.deleted', recording=recording, details={'reason': reason})
     db.session.commit()
     return deleted
 

@@ -458,6 +458,7 @@
     "settingFromEnv": "在 .env 中设置",
     "deletionModeAudioOnly": "仅音频",
     "deletionModeFullRecording": "整个录音",
+    "lastActive": "最近活动",
     "lastUpdated": "最后更新",
     "maxFileSizeHelp": "最大文件大小（兆字节）（1-10000 MB）",
     "megabytes": "MB",
@@ -832,6 +833,65 @@
     "toggleSelected": "归档或移出归档所选录音",
     "unarchive": "移出归档",
     "unarchivedToast": "录音已移出归档"
+  },
+  "auditLog": {
+    "tab": "审计日志",
+    "exportCsv": "导出 CSV",
+    "exportJsonl": "导出 JSONL",
+    "dismiss": "关闭",
+    "notice": "登录、录音访问、更改、共享和管理操作均记录在此日志中。",
+    "noticeAddress": "每个事件都会保存客户端地址。",
+    "noticeNoAddress": "不保存客户端地址。",
+    "noticeDays": "事件保留 {{days}} 天。",
+    "noticeNoLimit": "事件保留期限不限。",
+    "noticeSettings": "这两项可在系统设置中调整。",
+    "off": "审计日志已关闭。仅记录其自身设置的更改。",
+    "from": "开始日期",
+    "to": "结束日期",
+    "user": "用户",
+    "userPlaceholder": "用户名或 ID",
+    "events": "事件",
+    "all": "全部",
+    "recordingId": "录音 ID",
+    "result": "结果",
+    "accessBy": "访问方式",
+    "clear": "清除筛选",
+    "time": "时间",
+    "event": "事件",
+    "recording": "录音",
+    "address": "地址",
+    "target": "受影响的用户",
+    "owner": "所有者",
+    "group": "群组",
+    "userAgent": "用户代理",
+    "deletedUser": "已删除的用户 #{{id}}",
+    "empty": "没有事件",
+    "loadFailed": "无法加载审计日志。",
+    "newer": "较新",
+    "older": "较早",
+    "viewActivity": "查看活动",
+    "groups": {
+      "auth": "登录",
+      "access": "访问",
+      "change": "更改",
+      "share": "共享",
+      "admin": "管理",
+      "incognito": "无痕模式",
+      "audit": "审计日志"
+    },
+    "outcomes": {
+      "success": "成功",
+      "denied": "已拒绝",
+      "failed": "失败"
+    },
+    "actors": {
+      "session": "浏览器",
+      "api_token": "API 令牌",
+      "sso_token": "SSO 令牌",
+      "public_link": "公开链接",
+      "system": "系统",
+      "anonymous": "未登录"
+    }
   },
   "asrEditor": {
     "saved": "已保存",
@@ -1552,7 +1612,10 @@
     "updateSpeakerNamesFailed": "无法更新发言人名称",
     "updateSummaryFailed": "无法更新摘要",
     "updateTranscriptFailed": "无法保存转录文本",
-    "updateTranscriptionFailed": "无法保存转录文本"
+    "updateTranscriptionFailed": "无法保存转录文本",
+    "canceledTitle": "处理已取消",
+    "canceledMessage": "此录音的转录在完成前被取消。",
+    "canceledGuidance": "使用“重新处理”可再次开始转录。"
   },
   "eventExtraction": {
     "description": "查找录音中提到的会议、约会和截止日期，生成可下载的日历事件。",
@@ -2000,6 +2063,7 @@
   "incognito": {
     "audioNotStored": "隐身模式下不会保存音频",
     "discardConfirm": "丢弃隐身录音？丢弃后无法恢复。",
+    "lostIfTabCloses": "关闭标签页或浏览器后将丢失",
     "mode": "隐身模式",
     "notSavedToAccount": "不会保存到账号",
     "oneFileAtATime": "隐身模式下一次只能处理一个文件",
@@ -2371,6 +2435,9 @@
     "autoProcessFailed": "多次尝试后仍无法处理 {{filename}}，已在监视文件夹中将其重命名为 {{failed_name}}。将其改回原名即可重试。"
   },
   "preferences": {
+    "keyboard": "键盘",
+    "keyboardShortcuts": "键盘快捷键",
+    "keyboardShortcutsHelp": "用于录音列表、已打开的录音和播放器的单键操作。在电脑上按 ? 键可显示按键列表。默认开启。",
     "autoTranslation": "自动翻译新录音",
     "autoTranslationDisabled": "已被管理员关闭。",
     "autoTranslationHelp": "每条新录音转录完成后，自动翻译为您的输出语言。关闭时（默认），请使用“生成翻译”。翻译计入您的每月令牌预算。",
@@ -2406,44 +2473,74 @@
   },
   "progressQueue": {
     "title": "处理队列",
-    "clear": "清除",
-    "uploading": "{{count}} 个正在上传",
-    "transcribing": "{{count}} 个正在转录",
-    "summarizing": "{{count}} 个正在生成摘要",
-    "queued": "{{count}} 个排队中",
     "cancel": "取消",
     "failed": "失败",
-    "completed": "已完成",
     "done": "完成",
     "empty": "队列为空",
     "duplicateWarning": "检测到重复文件",
     "retry": "重试",
     "delete": "删除",
-    "uploadingShort": "个正在上传",
-    "transcribingShort": "个正在转录",
-    "summarizingShort": "个正在生成摘要",
-    "queuedShort": "个排队中",
-    "joiningShort": "合并中",
     "joining": "合并中",
     "joiningMessage": "正在合并音频文件…",
-    "convertingShort": "个正在转换",
     "converting": "转换中",
-    "convertingMessage": "正在转换音频文件…",
-    "processingOnServer": "正在处理…",
     "waitingForJoin": "已上传，等待另外 {{count}} 个文件以便合并",
     "waitingForJoinPlural": "已上传，等待另外 {{count}} 个文件以便合并",
-    "positionInQueue": "队列第 {{position}} 位",
-    "transcribingAudio": "正在转录音频…",
     "unknownFile": "未知文件",
     "uploadFailed": "上传失败",
-    "uploadingMessage": "正在上传…",
     "waiting": "等待中",
     "waitingForProcessing": "已上传，等待处理…",
     "waitingToUpload": "等待上传…",
     "region": "处理队列项目",
     "translating": "翻译中",
-    "translatingShort": "翻译中",
-    "translatingMessage": "正在翻译转录内容"
+    "count": {
+      "processing": "{{count}} 个处理中",
+      "queued": "{{count}} 个排队中",
+      "failed": "{{count}} 个失败",
+      "finished": "{{count}} 个已完成",
+      "inQueue": "队列中 {{count}} 个"
+    },
+    "groups": {
+      "active": "处理中",
+      "waiting": "等待中",
+      "failed": "失败",
+      "done": "最近完成"
+    },
+    "stage": {
+      "assembling": "组装中",
+      "titling": "生成标题",
+      "indexing": "索引中"
+    },
+    "queuedFor": {
+      "conversion": "排队第 {{position}} 位，等待转换",
+      "transcription": "排队第 {{position}} 位，等待转录",
+      "summary": "排队第 {{position}} 位，等待摘要",
+      "translation": "排队第 {{position}} 位，等待翻译"
+    },
+    "detail": {
+      "waiting": "等待中",
+      "preparing": "准备中",
+      "aligning": "对齐中",
+      "diarizing": "识别说话人",
+      "onServer": "服务器处理中"
+    },
+    "canceling": "正在取消…",
+    "partsOf": "{{done}} / {{total}}",
+    "elapsed": "此步骤开始后经过的时间",
+    "justNow": "刚刚",
+    "minutesAgo": "{{count}} 分钟前",
+    "hoursAgo": "{{count}} 小时前",
+    "clearFinished": "清除已完成",
+    "clearFailed": "清除失败项",
+    "open": "打开录音",
+    "remove": "从列表中移除",
+    "duplicate": "重复文件",
+    "emptyHint": "新的上传和重新处理任务会显示在这里。",
+    "cancelConfirm": {
+      "title": "取消转录？",
+      "message": "“{{title}}”还没有转录文本。取消后，该录音将标记为失败，音频会保留。",
+      "confirm": "取消转录",
+      "keep": "继续处理"
+    }
   },
   "promptVariables": {
     "title": "提示变量",
@@ -2837,8 +2934,7 @@
     "stuck": "重置卡住的处理",
     "summarizing": "生成摘要中",
     "transcribing": "转录中",
-    "uploading": "上传中",
-    "queuedTranslation": "排队中（翻译）"
+    "uploading": "上传中"
   },
   "summary": {
     "actionItems": "行动事项",
@@ -2856,7 +2952,8 @@
     "title": "摘要",
     "customizePrompt": "自定义提示",
     "editingSaveHint": "正在编辑。请通过上方的标签栏保存。",
-    "needsTranscription": "转录文本完成后即可生成摘要。"
+    "needsTranscription": "转录文本完成后即可生成摘要。",
+    "emptyHint": "摘要根据转录文本生成。"
   },
   "tagManagement": {
     "asrDefaults": "ASR 默认值",
@@ -2971,7 +3068,6 @@
     "editTranscript": "编辑转录",
     "enterFullscreen": "全屏",
     "exitFullscreen": "退出全屏",
-    "expand": "展开",
     "followPlayerDisabled": "跟随播放",
     "followPlayerEnabled": "停止跟随播放",
     "fullscreenVideo": "视频全屏",
@@ -3069,7 +3165,8 @@
     "speaker": "发言人 {{number}}",
     "speakerLabels": "发言人标签",
     "title": "转录文本",
-    "unknownSpeaker": "未知发言人"
+    "unknownSpeaker": "未知发言人",
+    "emptyHint": "处理完成后，转录文本将显示在此处。"
   },
   "unifiedShareModal": {
     "noPublicLinks": "尚无公开分享链接",
@@ -3500,6 +3597,10 @@
       "invalid_username_length": "用户名必须为 2 到 20 个字符。",
       "invalid_with_sources": "with_sources 必须为 true 或 false",
       "job_not_found": "未找到任务",
+      "upload_canceled": "上传已取消",
+      "invalid_client_upload_id": "client_upload_id 无效",
+      "job_not_cancelable": "此任务无法取消",
+      "job_already_finished": "任务已结束",
       "job_retry_failed_only": "只能重试失败的任务",
       "keep_audio_only_immutable": "keep_audio_only 在上传时设置，之后无法更改。",
       "last_admin_demotion": "不能移除最后一位管理员的管理员权限。",
@@ -3562,6 +3663,7 @@
       "public_sharing_disabled": "此服务器已关闭公开分享",
       "public_sharing_off": "此服务器已关闭公开分享",
       "push_unavailable": "推送通知不可用",
+      "query_token_disabled": "此服务器不接受通过查询参数 ?token= 传递的令牌；请在 Authorization: Bearer 请求头中发送",
       "query_token_read_only": "通过查询参数 ?token= 传递的令牌仅在 GET 和 HEAD 请求中被接受；请在 Authorization: Bearer 请求头中发送",
       "question_required": "question 为必填项",
       "recording_already_processing": "录音已在处理中",
@@ -3617,6 +3719,7 @@
       "speaker_map_required": "speaker_map 为必填项",
       "speaker_name_empty": "发言人姓名不能为空",
       "speaker_name_exists": "已存在名为 \"{{name}}\" 的发言人",
+      "speaker_name_generic": "不能将 SPEAKER_00 这样的说话人分离标签保存为发言人姓名",
       "speaker_name_required": "发言人姓名为必填项",
       "speaker_name_taken": "已存在同名发言人",
       "speaker_not_found": "未找到发言人",
@@ -3628,7 +3731,6 @@
       "summary_field_required": "summary 字段为必填项",
       "summary_generate_denied": "您没有为此录音生成摘要的权限",
       "summary_generation_failed": "无法生成摘要。请检查语言模型服务是否正在运行。",
-      "summary_generation_failed_detail": "无法生成摘要：{{detail}}",
       "summary_llm_not_configured": "摘要服务不可用（未配置 LLM 客户端）",
       "summary_openrouter_not_configured": "摘要服务不可用（未配置 OpenRouter 客户端）",
       "system_info_unavailable": "无法获取系统信息",
@@ -3704,6 +3806,7 @@
       "invalid_assistant_name": "助手名称最多 40 个字符，可包含字母、数字、空格、句点、连字符或撇号，并以字母或数字开头",
       "summary_prompt_invalid": "提示词不能为空，也不能超过 8000 个字符。",
       "summary_prompt_save_denied": "你不能将提示词保存到这里。",
+      "invalid_audit_filter": "审计日志的筛选条件包含无效值",
       "invalid_filter_date": "无法读取日期筛选条件",
       "invalid_default_ui_theme": "无效的默认界面主题。必须是以下之一：{{themes}}",
       "invalid_default_color_scheme": "无效的默认配色方案。必须是以下之一：{{schemes}}",
@@ -3732,6 +3835,8 @@
       "inquireAllProcessed": "所有录音均已为录音库搜索做好准备",
       "inquireProcessedRemaining": "已处理 {{processed}} 条录音，剩余 {{remaining}} 条。",
       "jobDeleted": "任务已删除",
+      "jobCanceled": "任务已取消",
+      "jobCancelRequested": "正在取消任务",
       "jobQueuedForRetry": "任务已加入重试队列",
       "modelDiscoveryUnsupported": "{{connector}} 未提供模型发现端点。",
       "noRecordingsToReembed": "没有需要重新生成嵌入的录音。",
@@ -4018,6 +4123,11 @@
       "0_10_23": {
         "1": "转录编辑器带有显示波形的时间轴。点击并拖动即可移动片段或调整其长度。",
         "2": "长转录可使用 Ctrl+F 快捷键搜索。"
+      },
+      "0_11_0": {
+        "1": "手机界面已重新设计，所有主题使用同一布局。",
+        "2": "处理队列显示进行中、等待中和失败的任务。任务和上传可以取消。",
+        "3": "桌面端提供键盘快捷键。按 ? 可查看按键列表。"
       }
     }
   },
@@ -4026,7 +4136,8 @@
     "scopeRecording": "此录音",
     "scopeLibrary": "所有录音",
     "sendHint": "发送（Enter）。换行请按 Ctrl+Enter。",
-    "jumpToLatest": "跳到最新"
+    "jumpToLatest": "跳到最新",
+    "recordingHint": "回答基于此录音。"
   },
   "regenerateSummary": {
     "title": "重新生成摘要",
@@ -4073,5 +4184,95 @@
   },
   "toast": {
     "dismiss": "关闭通知"
+  },
+  "phone": {
+    "about": "关于此录音的更多信息",
+    "back15": "后退 15 秒",
+    "backToList": "返回录音列表",
+    "changeMeetingDate": "更改会议日期",
+    "editParticipants": "编辑参与者",
+    "folder": "文件夹",
+    "forward15": "前进 15 秒",
+    "menu": "菜单",
+    "moreFilters": "更多筛选",
+    "off": "关",
+    "on": "开",
+    "openPlayer": "打开播放器",
+    "organize": "整理",
+    "position": "位置",
+    "sections": "录音分区",
+    "shareExport": "共享与导出",
+    "showAsBubbles": "以气泡显示",
+    "speakerStats": "发言人统计",
+    "textShown": "显示的文本",
+    "translateAgain": "重新翻译",
+    "uploaded": "上传于 {{date}}",
+    "uploadedLabel": "上传时间",
+    "uploadedOn": "上传于 {{date}}"
+  },
+  "signOut": {
+    "localCopiesTitle": "删除此浏览器中的副本？",
+    "localCopiesMessageOne": "此浏览器中保存着 1 个未到达服务器的录音或上传。退出登录时会将其从此浏览器中删除。",
+    "localCopiesMessage": "此浏览器中保存着 {{count}} 个未到达服务器的录音或上传。退出登录时会将其从此浏览器中删除。",
+    "deleteAndSignOut": "删除并退出登录"
+  },
+  "shortcuts": {
+    "title": "键盘快捷键",
+    "then": "然后",
+    "or": "或",
+    "settingHint": "可在“账户”的“偏好设置”中开启或关闭键盘快捷键。",
+    "keys": {
+      "space": "空格"
+    },
+    "groups": {
+      "general": "通用",
+      "navigation": "前往",
+      "list": "录音",
+      "recording": "已打开的录音",
+      "player": "播放器",
+      "assistant": "助手",
+      "editor": "分段编辑器",
+      "video": "全屏视频"
+    },
+    "showHelp": "显示键盘快捷键",
+    "close": "关闭最上层的对话框、菜单或面板",
+    "search": "搜索录音",
+    "newRecording": "新建录音",
+    "toggleQueue": "显示或隐藏处理队列",
+    "goRecordings": "录音",
+    "goAssistant": "询问 {{name}}",
+    "goSettings": "账户设置",
+    "goAdmin": "管理",
+    "moveInList": "下一个或上一个录音",
+    "openRecording": "打开所选录音",
+    "star": "加星标或取消星标",
+    "inbox": "移至收件箱或标为已读",
+    "archive": "归档或取消归档",
+    "delete": "删除",
+    "selectAll": "全选（选择模式下）",
+    "tab": {
+      "summary": "显示摘要",
+      "notes": "显示笔记",
+      "stats": "显示说话人统计",
+      "events": "显示事件"
+    },
+    "toggleView": "切换简单视图和气泡视图",
+    "copyTranscript": "复制转录文本",
+    "copyTab": "复制摘要或笔记",
+    "editTranscript": "编辑转录文本",
+    "editTab": "编辑摘要或笔记",
+    "openChat": "打开与 {{name}} 的聊天",
+    "findInTranscript": "在长转录文本中查找",
+    "playPause": "播放或暂停",
+    "skip5": "后退或前进 5 秒",
+    "skip15": "后退或前进 15 秒",
+    "speed": "减慢或加快播放",
+    "editorHelp": "显示分段编辑器的按键",
+    "editorSave": "保存",
+    "editorFind": "查找和替换",
+    "videoSkip": "后退或前进 10 秒",
+    "videoVolume": "调高或调低音量",
+    "videoLeave": "退出全屏",
+    "focusQuestion": "向 {{name}} 提问"
   }
 }

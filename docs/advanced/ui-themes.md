@@ -90,15 +90,59 @@ Only one branch is rendered at a time, so an id or a `ref` that appears in two b
 | `sidebar-row` | `components/sidebar.html`, row of the recordings list | One recording in the list. Its structure changed in four designs: a time column, a single-line row, a table row with columns, a card with an avatar footer. |
 | `header-actions` | `components/header.html` | The recording's action buttons in the top header on desktop. In one design most of them were moved into an overflow menu, in another into a toolbar above the recording. |
 | `detail-meta` | `components/detail-view.html` | The folder, tag and metadata strip above a recording on desktop. The chips carry their color in inline styles, which were replaced in three designs; in one design the recording toolbar is added here. |
-| `mobile-detail-header` | `components/detail/mobile-header.html` (moved whole) | The recording header on phones: same chip styles, plus layout hooks and a separate row of tab actions in one design. |
 | `transcript-turn` | `components/detail/desktop-transcription-panel.html` | One speaker turn of the simple transcript on desktop. A timestamp and speaker column or an avatar is added in two designs. Also rendered, read-only, by the public share page (see below). |
-| `transcript-turn-mobile` | `components/detail/mobile-transcript-panel.html` | The same on phones. |
+| `transcript-turn-mobile` | `components/detail/mobile-transcript-panel.html` | The same on phones, inside the shared phone layout (see below). |
 | `inquire-filters` | `inquire.html`, the filter column | The Inquire page's left column. Its groups were restyled in every design (disclosures, compact rows with counts, chips, the sidebar's navigation style). |
-| `status-area` | `components/progress-popup.html` (moved whole) | The processing queue popup of the main page. In one design a status bar is added beside it, with a button for the queue. |
+| `status-area` | `index.html`, after the upload dialog | The parts of the processing queue that lie over the page: the panel under the top bar while the recording list is collapsed, and the sheet of the phone layout. In one design a status bar is added, with the indicator of the queue in it. The markup of the indicator, the panel and the rows is shared (`templates/components/queue/_queue.html`) and is not part of the slot. |
+
+## The raised layer: toasts and the processing queue
+
+Toasts and the processing queue have one structure and one stylesheet for every theme (`static/css/styles.css` under "Toasts", `static/css/queue.css`). Their surface is not a theme surface. It is defined once, as tokens on `:root` and `.dark` in `styles.css`, and mixed from the variables of the color contract above, so a theme has nothing to style:
+
+| Token | Sets | Value |
+|---|---|---|
+| `--pop-bg` | The surface of a toast, of the indicator and of the panel | Light: `--bg-secondary` mixed 15% into white. Dark: `--text-primary` mixed 12% into `--bg-secondary`, which is lighter than every page surface |
+| `--pop-line`, `--pop-hairline` | The border of the indicator and the panel, the lines between rows | `--text-primary` mixed into the surface |
+| `--pop-bar`, `--pop-track` | Progress bars, the spinner and the hairline of the indicator, and their track | `--bg-button` (light), `--text-accent` (dark) |
+| `--pop-shadow`, `--pop-shadow-up` | The shadow of a toast and of the panel over the page, and the upward shadow of the docked panel | |
+| `--pop-radius`, `--pop-radius-sm` | The corners of cards and of buttons and marks | `--radius-lg`, `--radius-md` |
+| `--type-info`, `--type-success`, `--type-warning`, `--type-error` | The badge and the border of a toast, the mark of a failed row | Blue, green, amber and red, the same in every theme and color scheme |
+| `--type-*-fg` | Text and icons of a type on the surface | A value for light and a value for dark, each 4.5:1 or more on the surface |
+
+Rules for a theme:
+
+- The type colors are not changed, and `--pop-bg` is not set to a page color. A message has to stand out from the page in every theme.
+- The shape follows the radius tokens. A rule on a `.queue-*` or `.toast-*` class is added only where the layout of the theme requires it, as in the Workspace theme, where the docked panel is placed in the grid of the sidebar.
+- The docked panel is a child of `.sidebar-content-wrapper`, after the recording list. In a theme where that wrapper is not a column flexbox, the theme places `.queue-dock` itself and caps the height of `.queue-dock.is-open`.
+- The marks of the rows use `--bg-info-light`, `--bg-processing-light`, `--bg-success-light` and `--bg-tertiary` with their text colors.
+
+## The phone layout
+
+Below 768 px the recording page and the recording list have one structure for every theme. It is not a slot: the markup is in `templates/components/phone/` (the top bar of a recording, the details block, the sheets, the top bar, filter chips and sheets of the list) and in the phone parts of `templates/components/detail/` (the four tab panes, the player strip, the tab bar). A theme does not copy this markup. It sets tokens and, where a token is not enough, adds a rule on a `.ph-*` class, in a section named "Phone layout" of its stylesheet. The base is `static/css/phone.css`, which every theme gets, built from the variables of the color contract above. The rows of the list are still the theme's `sidebar-row`, and a speaker turn is still its `transcript-turn-mobile`.
+
+| Token | Sets | Base value |
+|---|---|---|
+| `--ph-page`, `--ph-bar`, `--ph-surface`, `--ph-surface-2`, `--ph-surface-3` | The page behind the text, the bars (top bar, details block, pinned transcript bar), sheets and strips, and the two inset fills | `--bg-primary`, `--bg-secondary`, `--bg-secondary`, `--bg-tertiary`, `--bg-tertiary` |
+| `--ph-text`, `--ph-text-2`, `--ph-text-3` | Text, secondary text, muted text and icons | `--text-primary`, `--text-secondary`, `--text-muted` |
+| `--ph-divider`, `--ph-line` | Lines between regions, outlines of fields and chips | `--border-primary`, `--border-secondary` |
+| `--ph-accent`, `--ph-on-accent` | The New recording button, the play button of the player sheet, the progress line | `--bg-button`, `--text-button` |
+| `--ph-accent-c`, `--ph-on-accent-c` | Pressed chips and toggles, the selected speed | `--bg-accent`, `--text-accent` |
+| `--ph-link`, `--ph-danger`, `--ph-warn`, `--ph-star` | Text buttons, delete rows, reset rows, the star | `--text-accent`, `--text-danger`, an amber, a gold |
+| `--ph-tab-pill`, `--ph-tab-on`, `--ph-tab-off` | The fill behind the icon of the open tab and the colors of the tab labels | `--ph-accent-c`, `--ph-on-accent-c`, `--ph-text-3` |
+| `--ph-font-title`, `--ph-font-read`, `--ph-fs-title`, `--ph-fs-read`, `--ph-lh-read` | The faces and sizes of titles and of reading text | inherited, 16px, 15px, 1.6 |
+| `--ph-r-ctl`, `--ph-r-field`, `--ph-r-seg`, `--ph-r-chip`, `--ph-r-md`, `--ph-r-sheet`, `--ph-r-fab`, `--ph-r-composer` | The corner radii of icon buttons, the search field, the Transcription / Translation switch, chips, rows and tiles, sheets, the New recording button and the composer | pills, 12px, 20px, 18px, 22px |
+| `--ph-scrim`, `--ph-shadow`, `--ph-shadow-1` | The veil behind a sheet, the shadow of sheets and of the New recording button, the small shadow of the selected switch option | |
+
+Rules for a theme's section:
+
+- Controls keep a touch target of 44 px or more. A theme may make a bar or a row denser, but not a button smaller than that.
+- The transcript's pinned bar (`.ph-tbar`) is `position: sticky` in the recording's one scrolling area (`.ph-scroll`). The themes' own sticky speaker labels (`.speaker-run > .speaker-tablet`) pin under it through `--ph-tbar-h`. A theme must not give `.ph-scroll` or an element between it and `.ph-tbar` an `overflow` value, which would end the pinning.
+- No `:has()` on `<html>` or `<body>`. The state of the page is on `<body>` as classes (`queue-open`, `queue-minimized`) and on the elements (`aria-pressed`, `aria-current`).
+- The recording list is the sidebar element at full width (`aside.sidebar.ph-list`), under the dialogs. `phone.css` sets its width with a selector that outweighs a theme's own sidebar width.
 
 The public share page (`templates/share.html`) shows the transcript in the visitor's theme, so it includes the `transcript-turn` slot a second time, with `transcript_read_only` set. Its Vue app (`static/js/share-page.js`) is not the main app and provides only `transcriptView`, `currentPlayingSegmentIndex`, `seekAudioFromEvent`, `showTimestampsSimpleView` (always false), `formatTimestamp`, `t` and `uiTheme`. A `transcript-turn` partial therefore reads nothing else, and puts what belongs to the owner alone (the double click that opens the editor and its tooltip) inside `{% if not transcript_read_only %} ... {% endif %}`. The guard test checks both.
 
-Changes that only add a class or adjust an inline style on shared chrome (the header bar, the account tab strip, the sign-in body) are made in the theme's CSS against the existing selectors instead of in a slot. A JavaScript default that differs per theme (for example whether the queue popup starts minimized) is read from `uiTheme` in `static/js/app.modular.js`. A formatting helper needed by a theme partial is added to the main app's returned scope, where it is available to every theme.
+Changes that only add a class or adjust an inline style on shared chrome (the header bar, the account tab strip, the sign-in body) are made in the theme's CSS against the existing selectors instead of in a slot. A JavaScript default that differs per theme (for example where the indicator of the processing queue is shown) is read from `uiTheme` in `static/js/app.modular.js`. A formatting helper needed by a theme partial is added to the main app's returned scope, where it is available to every theme.
 
 ### Shared hooks a theme can use
 

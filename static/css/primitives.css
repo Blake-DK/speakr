@@ -1228,6 +1228,78 @@ html.dark .modal-overlay {
     .app-dialog .modal-footer .btn { flex: 1 1 0; min-height: 44px; }
 }
 
+/* A key, as in the keyboard shortcuts help and beside a menu entry. */
+.kbd {
+    display: inline-block;
+    min-width: 1.5rem;
+    padding: 1px 6px;
+    border: var(--border-hairline) solid var(--border-secondary);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: 0.6875rem;
+    line-height: 1.5;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* The keyboard shortcuts help (static/js/modules/utils/shortcut-help.js),
+   shown in the app's message dialog: groups in columns, a row per action. */
+.shortcut-help__groups {
+    columns: 2 17rem;
+    column-gap: var(--sp-6, 1.5rem);
+}
+.shortcut-help__group {
+    break-inside: avoid;
+    margin: 0 0 var(--sp-4);
+}
+.shortcut-help__heading {
+    margin: 0 0 var(--sp-2);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+.shortcut-help__list { margin: 0; }
+.shortcut-help__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    padding: 3px 0;
+    border-bottom: var(--border-hairline) solid var(--border-primary);
+}
+.shortcut-help__row:last-child { border-bottom: 0; }
+.shortcut-help__label {
+    order: 1;
+    margin: 0;
+    min-width: 0;
+    font-size: 0.8125rem;
+    color: var(--text-primary);
+}
+.shortcut-help__keys {
+    order: 2;
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: 4px;
+    white-space: nowrap;
+}
+.shortcut-help__combo { display: inline-flex; align-items: center; gap: 3px; }
+.shortcut-help__or,
+.shortcut-help__then {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+}
+.shortcut-help__note {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
 /* Variant: danger-leaning modals get a subtle danger accent on the title */
 .modal-panel--danger .modal-header { border-bottom-color: var(--border-danger); }
 .modal-panel--danger .modal-title { color: var(--text-danger); }
@@ -2302,126 +2374,6 @@ details.disclosure-card[open] {
     .markdown-editor-container .EasyMDEContainer .CodeMirror-scroll {
         border-radius: 0 !important;
     }
-}
-
-
-/* ---- Progress popup viewport rules -------------------------------------
-   Desktop: 320 px floating card pinned to bottom-left.
-   Mobile (≤ 640 px): full-width bottom-sheet that sits ABOVE the audio
-   player + tab navigation strip (≈ 70 px player + 56 px nav + safe-area
-   inset). Rounded only on the top corners so it reads as a sheet
-   anchored to the bottom edge, not a free-floating card. */
-.progress-popup {
-    bottom: 1rem;
-    left: 1rem;
-    width: 20rem;
-}
-.progress-popup__card {
-    border-radius: 0.5rem;
-}
-
-/* On desktop the queue floats over the bottom of the recording list. Its
-   list is capped by the window height as well, and while it is shown the
-   recording list gets room at its end, so every row can be scrolled above
-   the popup. */
-@media (min-width: 641px) {
-    .progress-popup:not(.minimized) .progress-popup__card > .p-2 {
-        max-height: min(16rem, 25vh);
-    }
-    body.queue-open.queue-open .sidebar-list {
-        padding-bottom: calc(min(16rem, 25vh) + 7rem);
-    }
-    body.queue-minimized.queue-minimized .sidebar-list {
-        padding-bottom: 5rem;
-    }
-}
-
-/* The queue against the recording view's bottom edge (desktop). The queue
-   stays bottom-left in every state: the chat launcher and the chat panel are
-   on the right. The bottom audio player runs under the content columns;
-   app.modular.js publishes the height of that strip as --detail-bottom-inset
-   (publishDetailBottomInset) while the recording view is shown.
-   - Sidebar open: the card stays over the list and fits inside its 320 px
-     column, so it cannot reach the player that starts at the column's edge.
-   - Sidebar collapsed (or a narrow window, where the list is a drawer): no
-     list to sit over, so the card sits 1rem above the player. Collapsed it
-     keeps its header and summary line in view instead of sliding down over
-     the player.
-   The selectors are wrapped in :where() so a UI theme's own position for the
-   queue still wins; a theme can use the same variable.
-   The state of the queue and of the sidebar is read from classes on <body>
-   (queue-open, queue-minimized, app-sidebar-open, app-sidebar-closed; set in
-   app.modular.js), not with body:has(): a :has() on <body> made the browser
-   look at the whole page again whenever an element was added or removed
-   anywhere, which with a long transcript took a second per change. The
-   doubled class in some selectors keeps the weight the :has() form had. */
-@media (min-width: 641px) {
-    :where(body.app-sidebar-open) .progress-popup {
-        width: 18rem;
-        min-width: 0;
-    }
-    :where(body.app-sidebar-closed) .progress-popup {
-        bottom: calc(var(--detail-bottom-inset, 0px) + 1rem);
-    }
-    :where(body.app-sidebar-closed) .progress-popup.minimized {
-        transform: none;
-    }
-}
-
-@media (max-width: 640px) {
-    /* On phones the queue is a compact status bar pinned just ABOVE the
-       bottom audio player + nav, full width. The height of that bottom
-       cluster is measured into --mobile-bottom-inset (set in app.modular.js)
-       so the bar never overlaps it whether the player is shown, hidden, or
-       taller for video — and being anchored to the bottom it stays well
-       clear of the header / metadata row. The nav's offsetHeight already
-       includes its safe-area padding, so the inset accounts for that.
-       Collapsed it's a thin counter strip; tapping expands the list, which
-       grows upward from the bottom edge. */
-    .progress-popup {
-        bottom: calc(var(--mobile-bottom-inset, 116px) + 8px) !important;
-        left: 0.5rem !important;
-        right: 0.5rem !important;
-        top: auto !important;
-        width: auto !important;
-        max-width: none !important;
-        animation: progressPopIn 180ms ease;
-    }
-    /* Expanded: height-capped + scrollable so a long queue can't run off
-       the top of the screen. */
-    .progress-popup__card {
-        border-radius: 0.6rem;
-        max-height: 50vh;
-        display: flex;
-        flex-direction: column;
-    }
-    .progress-popup__card > .p-2 {
-        overflow-y: auto;
-    }
-
-    /* Collapsed = compact counter strip: icon + count + expand chevron +
-       close. Drop the desktop slide transform (the strip IS the header)
-       and hide the long title text, the summary line, and the clear
-       button so it stays slim. Keep the close so it can be dismissed. */
-    .progress-popup.minimized {
-        transform: none !important;
-    }
-    .progress-popup.minimized .progress-popup__title-text,
-    .progress-popup.minimized .progress-popup__summary,
-    .progress-popup.minimized .progress-popup__clear {
-        display: none;
-    }
-    .progress-popup.minimized .progress-popup__card {
-        max-height: none;
-    }
-    .progress-popup.minimized .progress-popup__header {
-        cursor: pointer;
-    }
-}
-
-@keyframes progressPopIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
 }
 
 

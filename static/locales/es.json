@@ -458,6 +458,7 @@
     "settingFromEnv": "Definido en .env",
     "deletionModeAudioOnly": "Solo audio",
     "deletionModeFullRecording": "Grabación completa",
+    "lastActive": "Última actividad",
     "lastUpdated": "Última actualización",
     "maxFileSizeHelp": "Tamaño máximo de archivo en megabytes (1-10000 MB)",
     "megabytes": "MB",
@@ -832,6 +833,65 @@
     "toggleSelected": "Archivar o desarchivar las grabaciones seleccionadas",
     "unarchive": "Desarchivar",
     "unarchivedToast": "Grabación desarchivada"
+  },
+  "auditLog": {
+    "tab": "Registro de auditoría",
+    "exportCsv": "Exportar CSV",
+    "exportJsonl": "Exportar JSONL",
+    "dismiss": "Cerrar",
+    "notice": "Los inicios de sesión, los accesos a grabaciones, los cambios, los recursos compartidos y las acciones administrativas se registran aquí.",
+    "noticeAddress": "Con cada evento se guarda la dirección del cliente.",
+    "noticeNoAddress": "Las direcciones de los clientes no se guardan.",
+    "noticeDays": "Los eventos se conservan durante {{days}} días.",
+    "noticeNoLimit": "Los eventos se conservan sin límite.",
+    "noticeSettings": "Ambos valores se definen en la configuración del sistema.",
+    "off": "El registro de auditoría está desactivado. Solo se registran los cambios de su propia configuración.",
+    "from": "Desde",
+    "to": "Hasta",
+    "user": "Usuario",
+    "userPlaceholder": "Nombre de usuario o ID",
+    "events": "Eventos",
+    "all": "Todos",
+    "recordingId": "ID de grabación",
+    "result": "Resultado",
+    "accessBy": "Acceso mediante",
+    "clear": "Borrar filtros",
+    "time": "Hora",
+    "event": "Evento",
+    "recording": "Grabación",
+    "address": "Dirección",
+    "target": "Usuario afectado",
+    "owner": "Propietario",
+    "group": "Grupo",
+    "userAgent": "Agente de usuario",
+    "deletedUser": "Usuario eliminado #{{id}}",
+    "empty": "Sin eventos",
+    "loadFailed": "No se pudo cargar el registro de auditoría.",
+    "newer": "Más recientes",
+    "older": "Anteriores",
+    "viewActivity": "Ver actividad",
+    "groups": {
+      "auth": "Inicio de sesión",
+      "access": "Acceso",
+      "change": "Cambios",
+      "share": "Compartir",
+      "admin": "Administración",
+      "incognito": "Incógnito",
+      "audit": "Registro de auditoría"
+    },
+    "outcomes": {
+      "success": "Correcto",
+      "denied": "Denegado",
+      "failed": "Fallido"
+    },
+    "actors": {
+      "session": "Navegador",
+      "api_token": "Token de API",
+      "sso_token": "Token de SSO",
+      "public_link": "Enlace público",
+      "system": "Sistema",
+      "anonymous": "Sin sesión"
+    }
   },
   "asrEditor": {
     "saved": "Guardado",
@@ -1552,7 +1612,10 @@
     "updateSpeakerNamesFailed": "No se pudieron actualizar los nombres de los hablantes",
     "updateSummaryFailed": "No se pudo actualizar el resumen",
     "updateTranscriptFailed": "No se pudo guardar la transcripción",
-    "updateTranscriptionFailed": "No se pudo guardar la transcripción"
+    "updateTranscriptionFailed": "No se pudo guardar la transcripción",
+    "canceledTitle": "Procesamiento cancelado",
+    "canceledMessage": "La transcripción de esta grabación se canceló antes de terminar.",
+    "canceledGuidance": "Usa Reprocesar para iniciar de nuevo la transcripción."
   },
   "eventExtraction": {
     "description": "Encuentra reuniones, citas y plazos mencionados en las grabaciones, como eventos de calendario que puedes descargar.",
@@ -2000,6 +2063,7 @@
   "incognito": {
     "audioNotStored": "El audio no se almacena en modo incógnito",
     "discardConfirm": "¿Descartar la grabación de incógnito? No se podrá recuperar.",
+    "lostIfTabCloses": "Se pierde si se cierra la pestaña o el navegador",
     "mode": "Modo incógnito",
     "notSavedToAccount": "No guardado en la cuenta",
     "oneFileAtATime": "Un archivo a la vez en modo incógnito",
@@ -2371,6 +2435,9 @@
     "autoProcessFailed": "{{filename}} no se pudo procesar después de varios intentos y se renombró a {{failed_name}} en la carpeta vigilada. Vuelva a ponerle su nombre original para intentarlo de nuevo."
   },
   "preferences": {
+    "keyboard": "Teclado",
+    "keyboardShortcuts": "Atajos de teclado",
+    "keyboardShortcutsHelp": "Teclas sueltas para la lista de grabaciones, la grabación abierta y el reproductor. En un ordenador, la tecla ? muestra la lista de teclas. Activado de forma predeterminada.",
     "autoTranslation": "Traducir automáticamente las grabaciones nuevas",
     "autoTranslationDisabled": "Desactivado por el administrador.",
     "autoTranslationHelp": "Traduce cada grabación nueva a tu idioma de salida cuando termina la transcripción. Si está desactivado (predeterminado), usa Generar traducción. Las traducciones cuentan para tu presupuesto mensual de tokens.",
@@ -2406,44 +2473,74 @@
   },
   "progressQueue": {
     "title": "Cola de procesamiento",
-    "clear": "Limpiar",
-    "uploading": "{{count}} subiendo",
-    "transcribing": "{{count}} transcribiendo",
-    "summarizing": "{{count}} resumiendo",
-    "queued": "{{count}} en cola",
     "cancel": "Cancelar",
     "failed": "Fallidos",
-    "completed": "Completados",
     "done": "Hecho",
     "empty": "La cola está vacía",
     "duplicateWarning": "Archivo duplicado detectado",
     "retry": "Reintentar",
     "delete": "Eliminar",
-    "uploadingShort": "subiendo",
-    "transcribingShort": "transcribiendo",
-    "summarizingShort": "resumiendo",
-    "queuedShort": "en cola",
-    "joiningShort": "uniendo",
     "joining": "Uniendo",
     "joiningMessage": "Uniendo los archivos de audio…",
-    "convertingShort": "convirtiendo",
     "converting": "Convirtiendo",
-    "convertingMessage": "Convirtiendo el archivo de audio…",
-    "processingOnServer": "Procesando…",
     "waitingForJoin": "Subido, esperando {{count}} archivo más para unir",
     "waitingForJoinPlural": "Subido, esperando {{count}} archivos más para unir",
-    "positionInQueue": "N.º {{position}} en la cola",
-    "transcribingAudio": "Transcribiendo audio…",
     "unknownFile": "Archivo desconocido",
     "uploadFailed": "Error en la subida",
-    "uploadingMessage": "Subiendo…",
     "waiting": "En espera",
     "waitingForProcessing": "Subido, esperando el procesamiento…",
     "waitingToUpload": "Esperando para subir…",
     "region": "Elementos de la cola de procesamiento",
     "translating": "Traduciendo",
-    "translatingShort": "traduciendo",
-    "translatingMessage": "Traduciendo la transcripción"
+    "count": {
+      "processing": "{{count}} en proceso",
+      "queued": "{{count}} en cola",
+      "failed": "{{count}} con error",
+      "finished": "{{count}} terminados",
+      "inQueue": "{{count}} en la cola"
+    },
+    "groups": {
+      "active": "Activos",
+      "waiting": "En espera",
+      "failed": "Fallidos",
+      "done": "Terminados hace poco"
+    },
+    "stage": {
+      "assembling": "Ensamblando",
+      "titling": "Titulando",
+      "indexing": "Indexando"
+    },
+    "queuedFor": {
+      "conversion": "N.º {{position}} en cola para conversión",
+      "transcription": "N.º {{position}} en cola para transcripción",
+      "summary": "N.º {{position}} en cola para resumen",
+      "translation": "N.º {{position}} en cola para traducción"
+    },
+    "detail": {
+      "waiting": "en espera",
+      "preparing": "preparando",
+      "aligning": "alineando",
+      "diarizing": "identificando hablantes",
+      "onServer": "procesando en el servidor"
+    },
+    "canceling": "Cancelando…",
+    "partsOf": "{{done}} de {{total}}",
+    "elapsed": "Tiempo desde el inicio de este paso",
+    "justNow": "ahora mismo",
+    "minutesAgo": "hace {{count}} min",
+    "hoursAgo": "hace {{count}} h",
+    "clearFinished": "Quitar terminados",
+    "clearFailed": "Quitar fallidos",
+    "open": "Abrir grabación",
+    "remove": "Quitar de la lista",
+    "duplicate": "Archivo duplicado",
+    "emptyHint": "Las nuevas subidas y los reprocesos aparecen aquí.",
+    "cancelConfirm": {
+      "title": "¿Cancelar la transcripción?",
+      "message": "«{{title}}» aún no tiene transcripción. Tras cancelar, la grabación queda marcada como fallida y el audio se conserva.",
+      "confirm": "Cancelar transcripción",
+      "keep": "Seguir procesando"
+    }
   },
   "promptVariables": {
     "title": "Variables del prompt",
@@ -2837,8 +2934,7 @@
     "stuck": "Restablecer procesamiento bloqueado",
     "summarizing": "Resumiendo",
     "transcribing": "Transcribiendo",
-    "uploading": "Subiendo",
-    "queuedTranslation": "En cola (traducción)"
+    "uploading": "Subiendo"
   },
   "summary": {
     "actionItems": "Elementos de acción",
@@ -2856,7 +2952,8 @@
     "title": "Resumen",
     "customizePrompt": "Personalizar prompt",
     "editingSaveHint": "Editando. Guarda desde la barra de pestañas de arriba.",
-    "needsTranscription": "El resumen estará disponible cuando termine la transcripción."
+    "needsTranscription": "El resumen estará disponible cuando termine la transcripción.",
+    "emptyHint": "El resumen se genera a partir de la transcripción."
   },
   "tagManagement": {
     "asrDefaults": "Configuraciones ASR predeterminadas",
@@ -2971,7 +3068,6 @@
     "editTranscript": "Editar transcripción",
     "enterFullscreen": "Pantalla completa",
     "exitFullscreen": "Salir de pantalla completa",
-    "expand": "Expandir",
     "followPlayerDisabled": "Seguir la reproducción",
     "followPlayerEnabled": "Dejar de seguir la reproducción",
     "fullscreenVideo": "Vídeo en pantalla completa",
@@ -3069,7 +3165,8 @@
     "speaker": "Hablante {{number}}",
     "speakerLabels": "Etiquetas de hablante",
     "title": "Transcripción",
-    "unknownSpeaker": "Hablante desconocido"
+    "unknownSpeaker": "Hablante desconocido",
+    "emptyHint": "La transcripción se muestra aquí después del procesamiento."
   },
   "unifiedShareModal": {
     "noPublicLinks": "Aún no hay enlaces públicos",
@@ -3500,6 +3597,10 @@
       "invalid_username_length": "El nombre de usuario debe tener entre 2 y 20 caracteres.",
       "invalid_with_sources": "with_sources debe ser true o false",
       "job_not_found": "Tarea no encontrada",
+      "upload_canceled": "La carga se canceló",
+      "invalid_client_upload_id": "client_upload_id no válido",
+      "job_not_cancelable": "Esta tarea no se puede cancelar",
+      "job_already_finished": "La tarea ya ha terminado",
       "job_retry_failed_only": "Solo se pueden reintentar las tareas fallidas",
       "keep_audio_only_immutable": "keep_audio_only se establece al subir el archivo y no se puede cambiar después.",
       "last_admin_demotion": "No se pueden quitar los derechos de administrador al último administrador restante.",
@@ -3562,6 +3663,7 @@
       "public_sharing_disabled": "El uso compartido público está desactivado en este servidor",
       "public_sharing_off": "El uso compartido público está desactivado en este servidor",
       "push_unavailable": "Notificaciones push no disponibles",
+      "query_token_disabled": "Un token en el parámetro de consulta ?token= no se acepta en este servidor; envíelo en el encabezado Authorization: Bearer",
       "query_token_read_only": "Un token en el parámetro de consulta ?token= solo se acepta en solicitudes GET y HEAD; envíelo en el encabezado Authorization: Bearer",
       "question_required": "question es obligatorio",
       "recording_already_processing": "La grabación ya se está procesando",
@@ -3617,6 +3719,7 @@
       "speaker_map_required": "speaker_map es obligatorio",
       "speaker_name_empty": "El nombre del hablante no puede estar vacío",
       "speaker_name_exists": "Ya existe un hablante llamado \"{{name}}\"",
+      "speaker_name_generic": "Una etiqueta de diarización como SPEAKER_00 no se puede guardar como nombre de hablante",
       "speaker_name_required": "El nombre del hablante es obligatorio",
       "speaker_name_taken": "Ya existe un hablante con este nombre",
       "speaker_not_found": "Hablante no encontrado",
@@ -3628,7 +3731,6 @@
       "summary_field_required": "El campo summary es obligatorio",
       "summary_generate_denied": "No tiene permiso para generar un resumen de esta grabación",
       "summary_generation_failed": "No se pudo generar el resumen. Compruebe que el servicio del modelo de lenguaje esté en ejecución.",
-      "summary_generation_failed_detail": "No se pudo generar el resumen: {{detail}}",
       "summary_llm_not_configured": "El servicio de resumen no está disponible (cliente LLM no configurado)",
       "summary_openrouter_not_configured": "El servicio de resumen no está disponible (cliente de OpenRouter no configurado)",
       "system_info_unavailable": "No se pudo obtener la información del sistema",
@@ -3704,6 +3806,7 @@
       "invalid_assistant_name": "El nombre del asistente puede tener hasta 40 letras, dígitos, espacios, puntos, guiones o apóstrofos, y empieza por una letra o un dígito",
       "summary_prompt_invalid": "El prompt no puede estar vacío ni superar los 8000 caracteres.",
       "summary_prompt_save_denied": "No puedes guardar el prompt ahí.",
+      "invalid_audit_filter": "Un filtro del registro de auditoría tiene un valor no válido",
       "invalid_filter_date": "No se pudo leer el filtro de fecha",
       "invalid_default_ui_theme": "Tema de interfaz predeterminado no válido. Debe ser uno de: {{themes}}",
       "invalid_default_color_scheme": "Esquema de colores predeterminado no válido. Debe ser uno de: {{schemes}}",
@@ -3732,6 +3835,8 @@
       "inquireAllProcessed": "Todas las grabaciones ya están preparadas para la búsqueda en la biblioteca",
       "inquireProcessedRemaining": "{{processed}} grabaciones procesadas. Quedan {{remaining}}.",
       "jobDeleted": "Tarea eliminada",
+      "jobCanceled": "Tarea cancelada",
+      "jobCancelRequested": "La tarea se está cancelando",
       "jobQueuedForRetry": "Tarea puesta en cola para reintentar",
       "modelDiscoveryUnsupported": "{{connector}} no ofrece un endpoint de detección de modelos.",
       "noRecordingsToReembed": "No hay grabaciones para volver a generar embeddings.",
@@ -4018,6 +4123,11 @@
       "0_10_23": {
         "1": "El editor de transcripciones tiene una línea de tiempo con la forma de onda. Los segmentos se pueden mover o redimensionar haciendo clic y arrastrando.",
         "2": "En las transcripciones largas se puede buscar con el atajo Ctrl+F."
+      },
+      "0_11_0": {
+        "1": "El diseño para teléfonos se ha rehecho, con un único diseño en todos los temas.",
+        "2": "La cola de procesamiento muestra los trabajos activos, en espera y fallidos. Los trabajos y las subidas se pueden cancelar.",
+        "3": "En el escritorio hay atajos de teclado. Las teclas se muestran con ?."
       }
     }
   },
@@ -4026,7 +4136,8 @@
     "scopeRecording": "Esta grabación",
     "scopeLibrary": "Todas las grabaciones",
     "sendHint": "Enviar (Enter). Para una línea nueva, pulse Ctrl+Enter.",
-    "jumpToLatest": "Ir a lo más reciente"
+    "jumpToLatest": "Ir a lo más reciente",
+    "recordingHint": "Las preguntas se responden a partir de esta grabación."
   },
   "regenerateSummary": {
     "title": "Regenerar resumen",
@@ -4073,5 +4184,95 @@
   },
   "toast": {
     "dismiss": "Descartar notificación"
+  },
+  "phone": {
+    "about": "Más sobre esta grabación",
+    "back15": "Retroceder 15 segundos",
+    "backToList": "Volver a las grabaciones",
+    "changeMeetingDate": "Cambiar la fecha de la reunión",
+    "editParticipants": "Editar participantes",
+    "folder": "Carpeta",
+    "forward15": "Avanzar 15 segundos",
+    "menu": "Menú",
+    "moreFilters": "Más filtros",
+    "off": "No",
+    "on": "Sí",
+    "openPlayer": "Abrir el reproductor",
+    "organize": "Organizar",
+    "position": "Posición",
+    "sections": "Secciones de la grabación",
+    "shareExport": "Compartir y exportar",
+    "showAsBubbles": "Mostrar como burbujas",
+    "speakerStats": "Estadísticas de hablantes",
+    "textShown": "Texto mostrado",
+    "translateAgain": "Traducir de nuevo",
+    "uploaded": "subida {{date}}",
+    "uploadedLabel": "Subida",
+    "uploadedOn": "Subida {{date}}"
+  },
+  "signOut": {
+    "localCopiesTitle": "¿Eliminar las copias de este navegador?",
+    "localCopiesMessageOne": "Este navegador guarda 1 grabación o subida que no llegó al servidor. Se elimina de este navegador al cerrar sesión.",
+    "localCopiesMessage": "Este navegador guarda {{count}} grabaciones o subidas que no llegaron al servidor. Se eliminan de este navegador al cerrar sesión.",
+    "deleteAndSignOut": "Eliminar y cerrar sesión"
+  },
+  "shortcuts": {
+    "title": "Atajos de teclado",
+    "then": "luego",
+    "or": "o",
+    "settingHint": "Los atajos de teclado se activan y desactivan en Cuenta, Preferencias.",
+    "keys": {
+      "space": "Espacio"
+    },
+    "groups": {
+      "general": "General",
+      "navigation": "Ir a",
+      "list": "Grabaciones",
+      "recording": "Grabación abierta",
+      "player": "Reproductor",
+      "assistant": "Asistente",
+      "editor": "Editor de segmentos",
+      "video": "Vídeo a pantalla completa"
+    },
+    "showHelp": "Mostrar los atajos de teclado",
+    "close": "Cerrar el diálogo, menú o panel superior",
+    "search": "Buscar grabaciones",
+    "newRecording": "Nueva grabación",
+    "toggleQueue": "Mostrar u ocultar la cola de procesamiento",
+    "goRecordings": "Grabaciones",
+    "goAssistant": "Preguntar a {{name}}",
+    "goSettings": "Ajustes de la cuenta",
+    "goAdmin": "Administración",
+    "moveInList": "Grabación siguiente o anterior",
+    "openRecording": "Abrir la grabación seleccionada",
+    "star": "Destacar o quitar la estrella",
+    "inbox": "Mover a la bandeja de entrada o marcar como leída",
+    "archive": "Archivar o desarchivar",
+    "delete": "Eliminar",
+    "selectAll": "Seleccionar todo, en el modo de selección",
+    "tab": {
+      "summary": "Mostrar el resumen",
+      "notes": "Mostrar las notas",
+      "stats": "Mostrar las estadísticas de hablantes",
+      "events": "Mostrar los eventos"
+    },
+    "toggleView": "Cambiar entre vista simple y de burbujas",
+    "copyTranscript": "Copiar la transcripción",
+    "copyTab": "Copiar el resumen o las notas",
+    "editTranscript": "Editar la transcripción",
+    "editTab": "Editar el resumen o las notas",
+    "openChat": "Abrir el chat con {{name}}",
+    "findInTranscript": "Buscar en una transcripción larga",
+    "playPause": "Reproducir o pausar",
+    "skip5": "Retroceder o avanzar 5 segundos",
+    "skip15": "Retroceder o avanzar 15 segundos",
+    "speed": "Reproducción más lenta o más rápida",
+    "editorHelp": "Mostrar las teclas del editor de segmentos",
+    "editorSave": "Guardar",
+    "editorFind": "Buscar y reemplazar",
+    "videoSkip": "Retroceder o avanzar 10 segundos",
+    "videoVolume": "Subir o bajar el volumen",
+    "videoLeave": "Salir de la pantalla completa",
+    "focusQuestion": "Escribir una pregunta a {{name}}"
   }
 }

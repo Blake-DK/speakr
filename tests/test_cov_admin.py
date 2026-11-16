@@ -115,7 +115,6 @@ _ADMIN_ENDPOINTS = [
     ('GET', '/admin/transcription-stats/users', None),
     ('POST', '/admin/auto-deletion/run', None),
     ('GET', '/admin/auto-deletion/stats', None),
-    ('GET', '/admin/auto-deletion/preview', None),
     ('POST', '/api/admin/migrate_recordings', None),
     ('GET', '/admin/auto-process/status', None),
     ('POST', '/admin/auto-process/start', None),
@@ -466,15 +465,6 @@ def test_auto_deletion_stats_ok(admin_client):
     assert 'archived_count' in resp.get_json()
 
 
-def test_auto_deletion_preview_ok(admin_client):
-    """Preview is admin-reachable. Returns 400 when auto-deletion is disabled
-    (default) or 200 with a dry-run payload when enabled in this environment."""
-    resp = admin_client.get('/admin/auto-deletion/preview')
-    assert resp.status_code in (200, 400)
-    if resp.status_code == 200:
-        assert 'would_delete' in resp.get_json()
-
-
 # ---------------------------------------------------------------------------
 # VECTOR STORE / RE-EMBED (heavy work mocked)
 # ---------------------------------------------------------------------------
@@ -494,6 +484,15 @@ def test_migrate_recordings_dispatch(admin_client):
 
 def test_inquire_process_recordings_dispatch(admin_client):
     """Re-embed endpoint dispatches to the (mocked) chunker, never real work."""
+    # The suite shares one database, and other test files leave finished
+    # recordings without chunks in it. The route processes exactly those, so
+    # the expected number is counted here instead of assumed to be zero.
+    from src.models import Recording, TranscriptChunk
+    with app.app_context():
+        with_chunks = db.session.query(TranscriptChunk.recording_id).distinct()
+        eligible = Recording.query.filter(
+            Recording.status == 'COMPLETED', Recording.transcription.isnot(None),
+            Recording.transcription != '', ~Recording.id.in_(with_chunks)).count()
     with patch('src.api.admin.process_recording_chunks',
                return_value=True) as m:
         resp = admin_client.post('/admin/inquire/process-recordings',
@@ -501,9 +500,9 @@ def test_inquire_process_recordings_dispatch(admin_client):
     assert resp.status_code == 200
     body = resp.get_json()
     assert body.get('success') is True
-    assert 'processed' in body
-    # No eligible recordings in the empty test DB -> chunker not actually run.
-    assert m.call_count == 0
+    assert body['processed'] == eligible
+    # Only the mock ran, once per recording without chunks (none in an empty database).
+    assert m.call_count == eligible
 
 
 def test_inquire_status_ok(admin_client):
