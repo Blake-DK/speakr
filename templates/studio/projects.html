@@ -55,13 +55,70 @@
     <div id="app" v-cloak class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col min-h-screen">
         <main class="flex-grow">
             <div class="bg-[var(--bg-secondary)] p-4 sm:p-6 lg:p-8 rounded-xl shadow-lg border border-[var(--border-primary)]" data-studio-projects>
-                <h2 class="text-2xl font-semibold text-[var(--text-primary)] mb-6" v-text="st('studio.projects.title')"></h2>
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+                    <h2 class="text-2xl font-semibold text-[var(--text-primary)]" v-text="st('studio.projects.title')"></h2>
+                    <button v-if="!showForm" type="button" class="btn btn--primary" data-studio-new-project @click="openForm">
+                        <i class="fas fa-plus" aria-hidden="true"></i>
+                        <span v-text="st('studio.projects.newProject')"></span>
+                    </button>
+                </div>
 
-                <div class="text-center py-12" data-studio-empty>
+                <form v-if="showForm" class="mb-8 p-4 rounded-lg border border-[var(--border-primary)] bg-[var(--bg-tertiary)]"
+                      data-studio-new-project-form @submit.prevent="create">
+                    <label class="block mb-3">
+                        <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.projects.nameLabel')"></span>
+                        <input ref="nameInput" v-model="form.name" type="text" maxlength="200" class="field w-full"
+                               :placeholder="st('studio.projects.namePlaceholder')" required>
+                    </label>
+                    <label class="block mb-3">
+                        <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.projects.loglineLabel')"></span>
+                        <textarea v-model="form.logline" rows="2" maxlength="20000" class="field w-full"
+                                  :placeholder="st('studio.projects.loglinePlaceholder')"></textarea>
+                    </label>
+                    <p v-if="formError" class="text-sm text-[var(--text-danger)] mb-3" role="alert" v-text="formError"></p>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="submit" class="btn btn--primary" :disabled="creating"
+                                v-text="creating ? st('studio.projects.creating') : st('studio.projects.create')"></button>
+                        <button type="button" class="btn btn--ghost" @click="closeForm" v-text="st('studio.common.cancel')"></button>
+                    </div>
+                </form>
+
+                <div v-if="loading" class="py-12 text-center text-[var(--text-muted)]">
+                    <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
+                    <span class="ml-2" v-text="st('studio.common.loading')"></span>
+                </div>
+
+                <div v-else-if="loadError" class="notice notice--danger" role="alert">
+                    <div class="notice__body">
+                        <p class="notice__message" v-text="st('studio.common.loadFailed')"></p>
+                        <div class="notice__actions">
+                            <button type="button" class="btn btn--sm" @click="load" v-text="st('studio.common.retry')"></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else-if="!hasProjects" class="text-center py-12" data-studio-empty>
                     <i class="fas fa-film text-4xl text-[var(--text-muted)] mb-4" aria-hidden="true"></i>
                     <p class="text-lg text-[var(--text-primary)]" v-text="st('studio.projects.empty')"></p>
                     <p class="mt-2 text-sm text-[var(--text-muted)] max-w-xl mx-auto" v-text="st('studio.projects.emptyHint')"></p>
                 </div>
+
+                <ul v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-studio-project-list>
+                    <li v-for="project in projects" :key="project.id">
+                        <a :href="'/studio/projects/' + project.id"
+                           class="block h-full p-4 rounded-lg border border-[var(--border-primary)] bg-[var(--bg-primary)] hover:border-[var(--border-focus)] transition-colors">
+                            <span class="flex items-start justify-between gap-2">
+                                <span class="text-lg font-semibold text-[var(--text-primary)] break-words" v-text="project.name"></span>
+                                <span v-if="project.role === 'member'" class="chip shrink-0" v-text="st('studio.projects.sharedWithYou')"></span>
+                                <span v-else-if="project.shared" class="chip shrink-0" v-text="st('studio.projects.shared')"></span>
+                            </span>
+                            <span v-if="project.logline" class="block mt-1 text-sm text-[var(--text-secondary)] line-clamp-2" v-text="project.logline"></span>
+                            <span class="block mt-3 text-xs text-[var(--text-muted)]" v-text="counts(project)"></span>
+                            <span v-if="project.role !== 'owner' && project.owner_name" class="block mt-1 text-xs text-[var(--text-muted)]"
+                                  v-text="st('studio.projects.owner', { name: project.owner_name })"></span>
+                        </a>
+                    </li>
+                </ul>
             </div>
         </main>
 
@@ -76,6 +133,7 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/studio/strings.js', v=app_version) }}"></script>
+    <script src="{{ url_for('static', filename='js/studio/api.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='js/studio/projects.js', v=app_version) }}"></script>
 </body>
 </html>

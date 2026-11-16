@@ -3,12 +3,181 @@
     "nav": {
       "projects": "Projects"
     },
+    "common": {
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "edit": "Edit",
+      "delete": "Delete",
+      "add": "Add",
+      "remove": "Remove",
+      "open": "Open",
+      "download": "Download",
+      "showText": "Show text",
+      "hideText": "Hide text",
+      "loading": "Loading…",
+      "retry": "Try again",
+      "you": "you",
+      "loadFailed": "This could not be loaded. Check your connection and try again."
+    },
     "projects": {
       "title": "Projects",
       "empty": "No projects yet.",
-      "emptyHint": "Each film or production will get its own project here, with its recordings, materials and documents together.",
+      "emptyHint": "Each film or production gets its own project here, with its recordings, materials and voice references together.",
+      "newProject": "New project",
+      "create": "Create project",
+      "creating": "Creating…",
+      "nameLabel": "Name",
+      "namePlaceholder": "The film or production",
+      "loglineLabel": "Logline",
+      "loglinePlaceholder": "One or two sentences about it (optional)",
+      "owner": "Owner: {{name}}",
+      "shared": "Shared",
+      "private": "Private",
+      "sharedWithYou": "Shared with you",
+      "counts": "{{recordings}} recordings · {{materials}} materials",
       "sourceCode": "Source code",
       "sourceCodeHint": "This site runs a modified version of Speakr. Its source code is published under the GNU AGPL v3."
+    },
+    "project": {
+      "back": "Projects",
+      "tabs": {
+        "details": "Details",
+        "recordings": "Recordings",
+        "materials": "Materials",
+        "voice": "Voice",
+        "people": "People"
+      },
+      "roles": {
+        "owner": "Your project",
+        "member": "Shared with you",
+        "admin": "Seen as an administrator"
+      },
+      "adminNote": "You see this project because you are an administrator. Its recordings show only where Speakr lets you open them.",
+      "folderMissing": "This project's folder was deleted in the recordings list. Its recordings were kept, outside any folder. A new folder is made when a recording is added here or the project is shared.",
+      "details": {
+        "name": "Name",
+        "logline": "Logline",
+        "notes": "Notes",
+        "notesHint": "Anything everyone working on the project should know.",
+        "hints": "Transcription hints",
+        "hintsHint": "Names and words to spell right in every recording of this project. They are settings of the project's folder in the recordings list.",
+        "hotwords": "Words and names",
+        "hotwordsPlaceholder": "Character names, places, the title… separated by commas",
+        "initialPrompt": "Context",
+        "initialPromptPlaceholder": "A sentence or two about what is said in the recordings",
+        "none": "Nothing yet.",
+        "ownerOnlyHints": "Only the project's owner changes the transcription hints.",
+        "dangerZone": "Delete this project",
+        "dangerHint": "Deletes the project, its materials and voice references, and its folder. The recordings stay, outside any folder, with the people who made them.",
+        "deleteConfirmTitle": "Delete this project?",
+        "deleteConfirm": "“{{name}}”, its materials and its voice references are deleted. The recordings stay with the people who made them.",
+        "deleted": "The project was deleted."
+      },
+      "recordings": {
+        "add": "Add recording",
+        "addHint": "Audio or video. It is transcribed with the project's hints, in the recordings queue.",
+        "dropHere": "Drop audio or video files here",
+        "empty": "No recordings in this project yet.",
+        "folderHint": "Recordings are kept in the folder “{{folder}}” of the recordings list.",
+        "uploading": "Uploading {{name}}… {{percent}}",
+        "processing": "{{name}}: received, checking the file…",
+        "queued": "{{name}}: queued for transcription.",
+        "failed": "{{name}}: {{error}}",
+        "by": "by {{name}}",
+        "archived": "Archived",
+        "status": {
+          "PENDING": "Waiting",
+          "QUEUED": "Waiting",
+          "PROCESSING": "Transcribing",
+          "SUMMARIZING": "Summarising",
+          "COMPLETED": "Ready",
+          "FAILED": "Failed"
+        }
+      },
+      "materials": {
+        "add": "Add materials",
+        "dropHere": "Drop files here or choose them",
+        "accepted": "PDF, PowerPoint (.pptx) and images (PNG, JPG, WebP, GIF), up to 30 MB each.",
+        "uploading": "Uploading {{count}} file(s)…",
+        "empty": "No materials yet.",
+        "byOn": "{{size}} · {{date}}",
+        "noText": "No text could be read from this deck.",
+        "kinds": {
+          "pdf": "PDF",
+          "pptx": "Slide deck",
+          "image": "Image"
+        }
+      },
+      "voice": {
+        "intro": "Examples of how this project should sound. The writing tools of a later version will match them.",
+        "fromRecording": "From a recording",
+        "chooseRecording": "Choose a recording of this project",
+        "noRecordings": "No finished recordings in this project yet.",
+        "pasteText": "Paste text",
+        "titleLabel": "Title",
+        "titlePlaceholder": "For example: Trailer narration",
+        "textLabel": "Text",
+        "textPlaceholder": "Paste a script, a transcript or subtitles. Timestamps and cue numbers of SRT or WebVTT files are removed.",
+        "loadFile": "Load a .txt, .md, .srt or .vtt file",
+        "empty": "No voice references yet.",
+        "sourceRecording": "Recording",
+        "sourceText": "Pasted text, {{chars}} characters",
+        "recordingHidden": "a recording you cannot open"
+      },
+      "people": {
+        "intro": "People on this list can open the project, its materials and voice references, and every recording in its folder, and can add their own. Only you change the list.",
+        "introMember": "The owner decides who is on this list.",
+        "sharingOff": "Sharing is switched off on this site, so the project cannot be shared. An administrator can switch on internal sharing.",
+        "owner": "Owner",
+        "member": "Member",
+        "addPerson": "Add a person",
+        "searchPlaceholder": "Username or email address",
+        "scopeEveryone": "Type part of a username.",
+        "scopeGroups": "Type part of the username of someone in one of your groups, or a full username or email address.",
+        "scopeExact": "Type the person's full username or email address.",
+        "noResults": "Nobody found.",
+        "unsaved": "Changes are not saved yet.",
+        "saved": "The People list was saved.",
+        "removeConfirmTitle": "Remove from the project?",
+        "removeConfirm": "Their recordings in this project leave it, and they no longer see the project or its recordings.",
+        "private": "Only you see this project."
+      }
+    },
+    "errors": {
+      "notFound": "That project does not exist, or you cannot see it.",
+      "ownerOnly": "Only the project's owner can do that.",
+      "membersOnly": "Only the owner and the people on the project's People list can add recordings.",
+      "uploaderOrOwner": "Only the person who added it, or the project's owner, can delete it.",
+      "nameRequired": "Give the project a name.",
+      "fieldInvalid": "The {{field}} is not text.",
+      "fieldTooLong": "The {{field}} is too long (at most {{max}} characters).",
+      "sharingOff": "Sharing is switched off on this site.",
+      "peopleInvalid": "The People list could not be read.",
+      "personNotFound": "Nobody is called “{{name}}”.",
+      "peopleNotAllowed": "One of the people could not be found.",
+      "tooManyPeople": "A project can be shared with at most {{max}} people.",
+      "folderHasSubfolders": "The project's folder has folders inside it in the recordings list. Move them out, then share again."
+    },
+    "materials": {
+      "errors": {
+        "none": "Choose at least one file.",
+        "tooMany": "At most {{max}} files at once.",
+        "type": "{{name}}: only PDF, PowerPoint (.pptx) and image (PNG, JPG, WebP, GIF) files can be added.",
+        "content": "{{name}}: the file is not what its name says.",
+        "size": "{{name}}: the file is larger than {{max}} MB.",
+        "empty": "{{name}}: the file is empty.",
+        "missing": "The file of this material is missing."
+      }
+    },
+    "voice": {
+      "untitledText": "Untitled text",
+      "untitledRecording": "Untitled recording",
+      "errors": {
+        "recording": "That recording is not in this project, or you cannot open it.",
+        "already": "That recording is a voice reference already.",
+        "empty": "There is no text left after removing timestamps and cue numbers."
+      }
     }
   }
 }

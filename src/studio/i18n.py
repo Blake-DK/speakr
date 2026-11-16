@@ -91,6 +91,14 @@ def studio_t(key, language=None):
     return key
 
 
+def studio_message(key, language=None, **params):
+    """studio_t with ``{{name}}`` placeholders filled in, as window.studioT does in the browser."""
+    text = studio_t(key, language)
+    for name, value in params.items():
+        text = text.replace('{{' + name + '}}', str(value))
+    return text
+
+
 def studio_strings(language=None):
     """All studio strings for ``language``, English filling the gaps; embedded in studio pages."""
     language = language or user_language()
