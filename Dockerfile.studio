@@ -13,10 +13,14 @@ FROM ${BASE_IMAGE}
 
 # The system libraries WeasyPrint loads for the documents' PDF download: pango
 # (with harfbuzz and fontconfig) and one font family (DejaVu), so a PDF never
-# needs a font from anywhere else.
+# needs a font from anywhere else. The font cache is built here, for every
+# font folder: the app runs as a user without a writable home, and fontconfig
+# would otherwise try to write a cache of its own on every PDF and log an
+# error each time.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 \
-       fonts-dejavu-core \
+       fontconfig fonts-dejavu-core \
+    && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
 # The add-on's own Python packages (requirements-studio.txt: python-pptx, anthropic,
@@ -25,7 +29,11 @@ RUN apt-get update \
 COPY requirements-studio.txt /tmp/requirements-studio.txt
 RUN pip install --no-cache-dir --require-hashes --no-deps -r /tmp/requirements-studio.txt \
     && rm /tmp/requirements-studio.txt \
-    && python -c "import pptx, anthropic, weasyprint; weasyprint.HTML(string='<p>ok</p>').write_pdf()"
+    && python -c "import pptx, anthropic, weasyprint" \
+    && su -s /bin/sh nobody -c 'HOME=/nonexistent python -c "import weasyprint; weasyprint.HTML(string=\"<p>ok</p>\").write_pdf()"' \
+       > /tmp/pdf-check.log 2>&1; status=$?; cat /tmp/pdf-check.log; \
+       if [ "$status" -ne 0 ] || [ -s /tmp/pdf-check.log ]; then echo "PDF check as a user without a home failed"; exit 1; fi; \
+       rm /tmp/pdf-check.log
 
 # whisper/ is a separate service with its own image (whisper/Dockerfile.arc);
 # upstream's "COPY . ." picks it up, but the app does not use it.
