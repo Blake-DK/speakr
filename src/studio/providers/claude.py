@@ -5,7 +5,9 @@ for Flask: streaming with adaptive thinking, the web search tool, PDFs as
 document blocks, images as image blocks, slide decks and transcripts as text,
 automatic prompt caching, the continuation of a paused server-tool turn, the
 refusal message, and one retry without ``thinking`` when an older model
-rejects it.
+rejects it. Added: when an answer that used the web search cites nothing
+(the search tool's dynamic filtering gives no citations), the pages the
+search found are listed instead, marked as such.
 """
 
 import base64
@@ -17,6 +19,7 @@ from src.studio import providers
 logger = logging.getLogger(__name__)
 
 MAX_PAUSE_TURN_CONTINUATIONS = 5
+MAX_SEARCHED_PAGES = 8
 WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search"}
 
 # The client is made per call: the key is read from the environment each time,
@@ -90,6 +93,8 @@ def stream_chat(system, messages, use_web_search=False, model=None):
 
     sources = []
     seen_urls = set()
+    searched = []          # the pages the web search returned, for when the answer cites none
+    searched_urls = set()
     yielded_text = False
     usage = {}
     last_beat = time.monotonic()
@@ -117,6 +122,13 @@ def stream_chat(system, messages, use_web_search=False, model=None):
                             if url and url not in seen_urls:
                                 seen_urls.add(url)
                                 sources.append({"title": getattr(citation, "title", None) or url, "url": url})
+                        if getattr(block, "type", "") == "web_search_tool_result":
+                            results = getattr(block, "content", None)
+                            for result in results if isinstance(results, list) else []:
+                                url = getattr(result, "url", None)
+                                if url and url not in searched_urls:
+                                    searched_urls.add(url)
+                                    searched.append({"title": getattr(result, "title", None) or url, "url": url})
 
                     if final.stop_reason == "pause_turn":
                         # The server-side tool loop paused; send the turn back so it resumes.
@@ -137,7 +149,12 @@ def stream_chat(system, messages, use_web_search=False, model=None):
                 raise
 
         if sources:
-            yield {"type": "sources", "sources": sources}
+            yield {"type": "sources", "sources": sources, "kind": "cited"}
+        elif searched:
+            # The web search tool with dynamic filtering (web_search_20260209) reads the
+            # results in its own code step, and the answer then carries no citations.
+            # List the pages the search found instead, under a heading that says so.
+            yield {"type": "sources", "sources": searched[:MAX_SEARCHED_PAGES], "kind": "searched"}
         yield {"type": "usage", "usage": usage, "model": model}
     except anthropic.AuthenticationError:
         yield {"type": "error", "message": "The Claude API key was refused. An administrator needs to check the "

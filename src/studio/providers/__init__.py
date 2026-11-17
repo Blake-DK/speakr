@@ -17,7 +17,7 @@ src/studio/attachments.py). The providers are plain generators, run in
 gunicorn's threads, not asyncio. They yield
 
     {"type": "text", "text": ...}
-    {"type": "sources", "sources": [{"title": ..., "url": ...}]}
+    {"type": "sources", "sources": [{"title": ..., "url": ...}], "kind": "cited" | "searched"}
     {"type": "error", "message": ...}
     {"type": "keepalive"}           while the model thinks or searches
     {"type": "usage", "usage": {...}, "model": ...}   once, at the end

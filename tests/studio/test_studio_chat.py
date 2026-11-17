@@ -213,6 +213,16 @@ def test_web_sources_are_added_as_links_http_and_https_only(owned, fake):
     assert 'javascript' not in answer
 
 
+def test_pages_the_search_found_are_listed_as_such_when_nothing_is_cited(owned, fake):
+    world, owner, project_id = owned
+    fake.events = [{'type': 'text', 'text': 'Answer.'},
+                   {'type': 'sources', 'kind': 'searched', 'sources': [{'title': 'Found', 'url': 'https://example.com/f'}]}]
+    chat = _new_chat(world, owner, project_id)
+    _send(world, owner, chat['id'], web_search=True)
+    answer = _messages(world, owner, chat['id'])[-1]['content']
+    assert answer == 'Answer.\n\n**Web pages the search found**\n- [Found](https://example.com/f)'
+
+
 # --- errors -----------------------------------------------------------------
 
 def test_a_provider_error_is_kept_shown_after_a_reload_and_never_sent_on(owned, fake):

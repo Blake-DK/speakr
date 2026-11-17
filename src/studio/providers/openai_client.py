@@ -102,7 +102,7 @@ def stream_chat(system, messages, use_web_search=False, model=None):
             if callable(close):
                 close()
         if sources:
-            yield {"type": "sources", "sources": sources}
+            yield {"type": "sources", "sources": sources, "kind": "cited"}
         yield {"type": "usage", "usage": usage, "model": model}
     except openai.AuthenticationError:
         yield {"type": "error", "message": "The OpenAI API key was refused. An administrator needs to check the "

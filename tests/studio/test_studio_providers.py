@@ -117,9 +117,50 @@ def test_web_citations_become_sources_once_each(server):
     server((200, _text_turn('Found it.', citations=[('https://example.com/a', 'A'), ('https://example.com/a', 'A'),
                                                     ('https://example.org/b', None)])))
     events = _run(use_web_search=True)
-    sources = next(e for e in events if e['type'] == 'sources')['sources']
+    found = next(e for e in events if e['type'] == 'sources')
+    assert found['kind'] == 'cited'
+    sources = found['sources']
     assert sources == [{'title': 'A', 'url': 'https://example.com/a'},
                        {'title': 'https://example.org/b', 'url': 'https://example.org/b'}]
+
+
+def _searched_turn(text, urls):
+    """A turn as the dynamic-filtering web search gives it: search results, then text without citations."""
+    results = [{'type': 'web_search_result', 'url': url, 'title': title, 'encrypted_content': 'x', 'page_age': None}
+               for url, title in urls]
+    return _sse(_message_start(),
+                {'type': 'content_block_start', 'index': 0, 'content_block': {
+                    'type': 'server_tool_use', 'id': 'srvtoolu_1', 'name': 'web_search', 'input': {}}},
+                {'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'input_json_delta',
+                                                                     'partial_json': '{"query": "q"}'}},
+                {'type': 'content_block_stop', 'index': 0},
+                {'type': 'content_block_start', 'index': 1, 'content_block': {
+                    'type': 'web_search_tool_result', 'tool_use_id': 'srvtoolu_1', 'content': results}},
+                {'type': 'content_block_stop', 'index': 1},
+                {'type': 'content_block_start', 'index': 2, 'content_block': {'type': 'text', 'text': '', 'citations': None}},
+                {'type': 'content_block_delta', 'index': 2, 'delta': {'type': 'text_delta', 'text': text}},
+                {'type': 'content_block_stop', 'index': 2},
+                {'type': 'message_delta', 'delta': {'stop_reason': 'end_turn', 'stop_sequence': None},
+                 'usage': {'output_tokens': 4, 'server_tool_use': {'web_search_requests': 1}}},
+                {'type': 'message_stop'})
+
+
+def test_an_answer_that_cites_nothing_lists_the_pages_the_search_found(server):
+    urls = [(f'https://example.com/{n}', f'Page {n}') for n in range(10)] + [('https://example.com/0', 'Again')]
+    server((200, _searched_turn('Two comparables.', urls)))
+    events = _run(use_web_search=True)
+    found = next(e for e in events if e['type'] == 'sources')
+    assert found['kind'] == 'searched'
+    assert [s['url'] for s in found['sources']] == [f'https://example.com/{n}' for n in range(claude.MAX_SEARCHED_PAGES)]
+    assert next(e for e in events if e['type'] == 'usage')['usage']['web_search_requests'] == 1
+
+
+def test_citations_win_over_the_pages_searched(server):
+    server((200, _text_turn('Cited.', citations=[('https://example.org/cited', 'Cited page')])))
+    events = _run(use_web_search=True)
+    found = next(e for e in events if e['type'] == 'sources')
+    assert found == {'type': 'sources', 'sources': [{'title': 'Cited page', 'url': 'https://example.org/cited'}],
+                     'kind': 'cited'}
 
 
 def test_a_paused_turn_is_sent_back_and_resumes(server):
@@ -201,7 +242,7 @@ def test_openai_streams_text_sources_and_usage(monkeypatch):
     out = list(openai_client.stream_chat('sys', [{'role': 'user', 'text': 'q', 'attachments': [pdf]}],
                                          use_web_search=True, model='gpt-test'))
     assert out[0] == {'type': 'text', 'text': 'Hi'}
-    assert {'type': 'sources', 'sources': [{'title': 'Ex', 'url': 'https://example.com'}]} in out
+    assert {'type': 'sources', 'sources': [{'title': 'Ex', 'url': 'https://example.com'}], 'kind': 'cited'} in out
     assert out[-1] == {'type': 'usage', 'usage': {'input_tokens': 5, 'output_tokens': 2}, 'model': 'gpt-test'}
     assert fake.kwargs['instructions'] == 'sys' and fake.kwargs['tools'] == [{'type': 'web_search'}]
     parts = fake.kwargs['input'][0]['content']

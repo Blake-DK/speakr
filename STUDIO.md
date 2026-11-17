@@ -122,6 +122,11 @@ site running this code can get its source.
   instructions, and the project's voice references the sender may open (a
   12,000-character budget), each of which the person can leave out with the
   context bar. Prompts and workflows are in `src/studio/workflows.py`.
+- With web research on, the pages an answer cites are listed under it
+  ("Sources"). The web search tool with dynamic filtering (the one used,
+  `web_search_20260209`) gives no citations, so when an answer cites nothing
+  the pages the search found are listed instead (at most 8), under "Web
+  pages the search found".
 - Model answers are Markdown, shown through Speakr's own safe renderer
   (`static/js/markdown-safe.js`), with images dropped and links opened in a
   new tab.

@@ -10,7 +10,8 @@ Carried over from the standalone app the studio replaces, behaviour kept:
 - sending streams the answer; regenerating replaces the last answer; editing
   the last message (one's own) removes everything after it, and the page then
   regenerates;
-- web sources are added under the answer as a list of links;
+- web sources are added under the answer as a list of links (the cited
+  pages; when the answer cites none, the pages the search found, marked so);
 - a provider error is kept as a message of role ``error``: shown after a
   reload, never sent to a provider, removed by regenerate and edit;
 - Stop, or a lost connection, keeps what was written so far, marked
@@ -469,8 +470,14 @@ def _safe_title(title, url):
     return text.replace('[', '(').replace(']', ')') or url
 
 
-def sources_markdown(sources):
-    """'**Sources**' and a list of links, http and https only; '' when none is left."""
+SOURCES_HEADINGS = {'cited': 'Sources', 'searched': 'Web pages the search found'}
+
+
+def sources_markdown(sources, kind='cited'):
+    """'**Sources**' (or, when the answer cites nothing, the pages the search found) and a list of links.
+
+    http and https links only; '' when none is left.
+    """
     lines = []
     for source in sources or []:
         if not isinstance(source, dict):
@@ -478,21 +485,22 @@ def sources_markdown(sources):
         url = _safe_url(source.get('url'))
         if url:
             lines.append(f"- [{_safe_title(source.get('title'), url)}]({url})")
-    return ("\n\n**Sources**\n" + "\n".join(lines)) if lines else ""
+    heading = SOURCES_HEADINGS.get(kind, SOURCES_HEADINGS['cited'])
+    return (f"\n\n**{heading}**\n" + "\n".join(lines)) if lines else ""
 
 
 def _sse(event):
     return f"data: {json.dumps(event)}\n\n"
 
 
-def save_answer(chat_id, token, provider, model, parts, sources, error_text, stopped, usage):
+def save_answer(chat_id, token, provider, model, parts, sources, error_text, stopped, usage, sources_kind='cited'):
     """Store the answer (and an error row) and give the chat back. Commits."""
     from src.studio.models import StudioChat, StudioMessage
     try:
         chat = db.session.get(StudioChat, chat_id)
         if chat is not None:
             now = datetime.utcnow()
-            text = "".join(parts) + sources_markdown(sources)
+            text = "".join(parts) + sources_markdown(sources, sources_kind)
             if stopped:
                 text += STOPPED_SUFFIX
             if text.strip():
@@ -524,6 +532,7 @@ def stream_response(chat_id, token, provider, model, system, history, web_search
     def generate():
         with app.app_context():
             parts, sources, usage = [], [], {}
+            sources_kind = 'cited'
             answer_model = model
             error_text = None
             stopped = False
@@ -546,7 +555,8 @@ def stream_response(chat_id, token, provider, model, system, history, web_search
                         yield _sse({'type': 'text', 'text': event['text']})
                     elif kind == 'sources':
                         sources = event.get('sources') or []
-                        md = sources_markdown(sources)
+                        sources_kind = event.get('kind') or 'cited'
+                        md = sources_markdown(sources, sources_kind)
                         if md:
                             yield _sse({'type': 'sources', 'markdown': md})
                     elif kind == 'error':
@@ -573,7 +583,8 @@ def stream_response(chat_id, token, provider, model, system, history, web_search
                         close()
                     except Exception:
                         pass
-                save_answer(chat_id, token, provider, answer_model, parts, sources, error_text, stopped, usage)
+                save_answer(chat_id, token, provider, answer_model, parts, sources, error_text, stopped, usage,
+                            sources_kind)
             if failed:
                 yield _sse({'type': 'error', 'message': error_text})
             yield _sse({'type': 'done'})
