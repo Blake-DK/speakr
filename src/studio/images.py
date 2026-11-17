@@ -146,13 +146,21 @@ def create(project, user, data):
         png, usage = generate(prompt, size, quality)
     except openai.AuthenticationError:
         raise ImageError('studio.images.errors.keyRefused', 502, env=providers.KEY_ENV['openai'])
-    except openai.RateLimitError:
+    except openai.RateLimitError as e:
+        if providers.openai_no_credit(e):
+            raise ImageError('studio.images.errors.noCredit', 502)
         raise ImageError('studio.images.errors.rateLimited', 502)
     except openai.APIStatusError as e:
         message = getattr(e, 'message', None) or str(e)
         raise ImageError('studio.images.errors.api', 502, code=e.status_code, message=str(message)[:300])
     except openai.APIConnectionError:
         raise ImageError('studio.images.errors.connection', 502)
+    except openai.APIError as e:
+        if providers.openai_no_credit(e):
+            raise ImageError('studio.images.errors.noCredit', 502)
+        message = getattr(e, 'message', None) or str(e)
+        raise ImageError('studio.images.errors.api', 502, code=getattr(e, 'code', None) or 'error',
+                         message=str(message)[:300])
     except (ValueError, TypeError):
         raise ImageError('studio.images.errors.noImage', 502)
     if not png.startswith(PNG_SIGNATURE):

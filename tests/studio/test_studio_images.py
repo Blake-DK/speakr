@@ -68,10 +68,10 @@ def _http():
         return httpx
 
 
-def _status_error(cls, status):
+def _status_error(cls, status, body=None):
     http = _http()
     request = http.Request('POST', 'https://api.openai.com/v1/images/generations')
-    return cls('refused', response=http.Response(status, request=request), body=None)
+    return cls('refused', response=http.Response(status, request=request), body=body)
 
 
 def test_without_a_key_nothing_is_called_and_the_page_is_told_why(owned):
@@ -144,6 +144,10 @@ def test_switched_off_with_gpt_nothing_is_called(owned, fake, monkeypatch):
 @pytest.mark.parametrize('make_error, code', [
     (lambda: _status_error(openai.AuthenticationError, 401), 'keyRefused'),
     (lambda: _status_error(openai.RateLimitError, 429), 'rateLimited'),
+    (lambda: _status_error(openai.RateLimitError, 429, {'code': 'credit_balance_exhausted', 'type': 'insufficient_quota',
+                                                        'message': 'You have no credits remaining.'}), 'noCredit'),
+    (lambda: openai.APIError('You have no credits remaining.', _http().Request('POST', 'https://api.openai.com/'),
+                             body={'code': 'credit_balance_exhausted', 'type': 'insufficient_quota'}), 'noCredit'),
     (lambda: _status_error(openai.BadRequestError, 400), 'api'),
     (lambda: openai.APIConnectionError(request=_http().Request('POST', 'https://api.openai.com/')), 'connection'),
 ])

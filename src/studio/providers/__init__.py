@@ -65,6 +65,17 @@ def _setting(key):
     return row.value if row is not None else None
 
 
+# OpenAI's error codes for an account without credit left (a 429, or an error event mid-stream).
+OPENAI_NO_CREDIT = frozenset({'insufficient_quota', 'credit_balance_exhausted', 'billing_hard_limit_reached'})
+OPENAI_NO_CREDIT_MESSAGE = ("OpenAI has no credit left on this account. An administrator needs to add credit to the "
+                            "OpenAI account, then try again.")
+
+
+def openai_no_credit(exc):
+    """Whether an error of the openai package says the account has no credit left (not a passing rate limit)."""
+    return bool({getattr(exc, 'code', None), getattr(exc, 'type', None)} & OPENAI_NO_CREDIT)
+
+
 def setting(key):
     """A studio setting's stored value, or None."""
     return _setting(key)

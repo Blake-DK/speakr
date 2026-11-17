@@ -306,6 +306,7 @@
         "off": "Image generation is switched off: GPT is switched off in the chat settings.",
         "keyRefused": "The OpenAI API key was refused. An administrator needs to check the server’s {{env}}.",
         "rateLimited": "OpenAI is rate-limited right now. Wait a moment and try again.",
+        "noCredit": "OpenAI has no credit left on this account. An administrator needs to add credit to the OpenAI account, then try again.",
         "api": "OpenAI API error ({{code}}): {{message}}",
         "connection": "Could not reach the OpenAI API. Check the server’s internet connection.",
         "noImage": "OpenAI sent no image back. Try again."

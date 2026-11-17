@@ -248,3 +248,65 @@ def test_openai_streams_text_sources_and_usage(monkeypatch):
     parts = fake.kwargs['input'][0]['content']
     assert parts[0]['type'] == 'input_file' and parts[0]['file_data'].startswith('data:application/pdf;base64,')
     assert parts[-1] == {'type': 'input_text', 'text': 'q'}
+
+
+def _openai_http():
+    try:
+        import httpx2
+        return httpx2
+    except ImportError:
+        import httpx
+        return httpx
+
+
+class RaisingResponses:
+    """A Responses stream that sends one piece of text, then fails as OpenAI's error event does."""
+
+    def __init__(self, error):
+        self.error = error
+
+    def create(self, **kwargs):
+        def events():
+            yield SimpleNamespace(type='response.output_text.delta', delta='Hal')
+            raise self.error
+        return events()
+
+
+def test_openai_an_error_in_the_middle_of_the_stream_is_said_not_raised(monkeypatch):
+    openai = pytest.importorskip('openai')
+    from src.studio.providers import openai_client
+    request = _openai_http().Request('POST', 'https://api.openai.com/v1/responses')
+    no_credit = openai.APIError('You have no credits remaining.', request,
+                                body={'code': 'credit_balance_exhausted', 'type': 'insufficient_quota'})
+    monkeypatch.setattr(openai_client, '_client_factory', lambda **o: SimpleNamespace(responses=RaisingResponses(no_credit)))
+    out = list(openai_client.stream_chat('sys', [{'role': 'user', 'text': 'q', 'attachments': []}], model='gpt-test'))
+    assert out[0] == {'type': 'text', 'text': 'Hal'}
+    assert out[-1] == {'type': 'error', 'message': providers.OPENAI_NO_CREDIT_MESSAGE}
+    other = openai.APIError('The server had an error.', request, body={'code': 'server_error'})
+    monkeypatch.setattr(openai_client, '_client_factory', lambda **o: SimpleNamespace(responses=RaisingResponses(other)))
+    out = list(openai_client.stream_chat('sys', [{'role': 'user', 'text': 'q', 'attachments': []}], model='gpt-test'))
+    assert out[-1] == {'type': 'error', 'message': 'OpenAI API error: The server had an error.'}
+
+
+def test_openai_no_credit_is_not_called_a_rate_limit(monkeypatch):
+    openai = pytest.importorskip('openai')
+    from src.studio.providers import openai_client
+    http = _openai_http()
+    response = http.Response(429, request=http.Request('POST', 'https://api.openai.com/v1/responses'))
+    quota = openai.RateLimitError('You have no credits remaining.', response=response,
+                                  body={'code': 'credit_balance_exhausted', 'type': 'insufficient_quota'})
+    busy = openai.RateLimitError('Slow down.', response=response, body={'code': 'rate_limit_exceeded'})
+
+    class Refusing:
+        def __init__(self, error):
+            self.error = error
+
+        def create(self, **kwargs):
+            raise self.error
+
+    for error, expected in ((quota, providers.OPENAI_NO_CREDIT_MESSAGE),
+                            (busy, 'OpenAI is rate-limited right now. Wait a moment and try again.')):
+        monkeypatch.setattr(openai_client, '_client_factory', lambda **o: SimpleNamespace(responses=Refusing(error)))
+        out = list(openai_client.stream_chat('sys', [{'role': 'user', 'text': 'q', 'attachments': []}], model='gpt-test'))
+        assert out == [{'type': 'error', 'message': expected}]
+

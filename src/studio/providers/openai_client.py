@@ -107,13 +107,22 @@ def stream_chat(system, messages, use_web_search=False, model=None):
     except openai.AuthenticationError:
         yield {"type": "error", "message": "The OpenAI API key was refused. An administrator needs to check the "
                                            "server's STUDIO_OPENAI_API_KEY."}
-    except openai.RateLimitError:
-        yield {"type": "error", "message": "OpenAI is rate-limited right now. Wait a moment and try again."}
+    except openai.RateLimitError as e:
+        if providers.openai_no_credit(e):
+            yield {"type": "error", "message": providers.OPENAI_NO_CREDIT_MESSAGE}
+        else:
+            yield {"type": "error", "message": "OpenAI is rate-limited right now. Wait a moment and try again."}
     except openai.APIStatusError as e:
         yield {"type": "error",
                "message": f"OpenAI API error ({e.status_code}): {str(getattr(e, 'message', '') or e)[:500]}"}
     except openai.APIConnectionError:
         yield {"type": "error", "message": "Could not reach the OpenAI API. Check the server's internet connection."}
+    except openai.APIError as e:
+        # An error event in the middle of the stream: the request was accepted (200), then OpenAI refused it.
+        if providers.openai_no_credit(e):
+            yield {"type": "error", "message": providers.OPENAI_NO_CREDIT_MESSAGE}
+        else:
+            yield {"type": "error", "message": f"OpenAI API error: {str(getattr(e, 'message', '') or e)[:500]}"}
 
 
 EXCLUDED_MODEL_WORDS = ("audio", "realtime", "image", "transcribe", "tts", "embed", "moderation", "dall-e", "whisper")
