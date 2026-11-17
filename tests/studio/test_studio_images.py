@@ -17,6 +17,10 @@ openai = pytest.importorskip('openai')
 PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 64
 
 
+MODEL_IDS = ['gpt-5.1', 'gpt-image-2.6-flare', 'gpt-image-2', 'chatgpt-image-latest', 'dall-e-3', 'gpt-image-1-mini',
+             'text-embedding-3-small']
+
+
 class FakeImages:
     def __init__(self, data=PNG, error=None):
         self.data = data
@@ -27,13 +31,15 @@ class FakeImages:
         self.calls.append(kwargs)
         if self.error is not None:
             raise self.error
-        return SimpleNamespace(data=[SimpleNamespace(b64_json=base64.b64encode(self.data).decode())])
+        return SimpleNamespace(data=[SimpleNamespace(b64_json=base64.b64encode(self.data).decode())],
+                               usage=SimpleNamespace(input_tokens=12, output_tokens=196, total_tokens=208))
 
 
 @pytest.fixture
 def fake(monkeypatch):
     holder = FakeImages()
-    monkeypatch.setattr(images, '_client_factory', lambda: SimpleNamespace(images=holder))
+    models = SimpleNamespace(list=lambda: [SimpleNamespace(id=i) for i in MODEL_IDS])
+    monkeypatch.setattr(images, '_client_factory', lambda: SimpleNamespace(images=holder, models=models))
     monkeypatch.delenv('STUDIO_OPENAI_API_KEY', raising=False)
     monkeypatch.delenv('STUDIO_OPENAI_IMAGE_MODEL', raising=False)
     yield holder
@@ -73,7 +79,7 @@ def test_without_a_key_nothing_is_called_and_the_page_is_told_why(owned):
     response = _post(world, owner, project_id)
     assert response.status_code == 400 and 'STUDIO_OPENAI_API_KEY' in response.get_json()['error']
     assert world.client(owner).get('/api/studio/chat-config').get_json()['images'] == {
-        'available': False, 'has_key': False, 'enabled': True, 'model': 'gpt-image-1',
+        'available': False, 'has_key': False, 'enabled': True, 'model': 'gpt-image-2.6-flare',
         'key_env': 'STUDIO_OPENAI_API_KEY', 'sizes': ['1024x1536', '1024x1024', '1536x1024'],
         'qualities': ['low', 'medium', 'high']}
     assert world.client(owner).get(f'/api/studio/projects/{project_id}/materials').get_json()['items'] == []
@@ -88,8 +94,10 @@ def test_an_image_is_stored_as_a_material_of_the_project(owned, fake, monkeypatc
     made = response.get_json()
     assert made['name'] == 'film-poster-for-poster-film-moon-vault-n.png'
     assert made['kind'] == 'image' and made['size'] == len(PNG)
-    assert fake.calls == [{'model': 'gpt-image-1', 'prompt': 'Film poster for "Poster film": moon, vault, neon.',
-                           'size': '1536x1024', 'quality': 'high'}]
+    assert fake.calls == [{'model': 'gpt-image-2.6-flare', 'prompt': 'Film poster for "Poster film": moon, vault, neon.',
+                           'size': '1536x1024', 'quality': 'high', 'output_format': 'png'}]
+    assert made['usage'] == {'input_tokens': 12, 'output_tokens': 196, 'total_tokens': 208,
+                             'model': 'gpt-image-2.6-flare'}
     material = db.session.get(StudioMaterial, made['id'])
     assert material.uploaded_by == owner and material.content_type == 'image/png'
     file = world.client(owner).get(f"/api/studio/materials/{made['id']}/file")
@@ -203,3 +211,16 @@ def test_a_deleted_projects_empty_material_folder_goes(owned):
     assert os.path.isdir(folder)
     assert world.client(owner).delete(f'/api/studio/projects/{project_id}').status_code == 200
     assert not os.path.exists(folder)
+
+
+def test_the_settings_page_lists_the_keys_image_models(owned, fake, monkeypatch):
+    world, owner, project_id = owned
+    monkeypatch.setenv('STUDIO_OPENAI_API_KEY', 'test-key-not-real')
+    assert [m['id'] for m in images.list_models()] == [
+        'gpt-image-2.6-flare', 'gpt-image-2', 'gpt-image-1-mini', 'chatgpt-image-latest']
+    # The chat model lists are the providers' own; here they are faked so no request leaves the test.
+    monkeypatch.setattr(providers, 'module', lambda name: SimpleNamespace(list_models=lambda: []))
+    admin = world.client(world.user(admin=True))
+    listed = admin.get('/api/studio/settings/models').get_json()
+    assert [m['id'] for m in listed['openai_image']][0] == 'gpt-image-2.6-flare' and not listed['errors']
+    assert world.client(owner).get('/api/studio/settings/models').status_code == 404

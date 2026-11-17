@@ -113,6 +113,16 @@
                                    :placeholder="st('studio.settings.modelDefault', { model: imageDefault })">
                         </label>
                         <p class="text-xs text-[var(--text-muted)]" v-text="st('studio.settings.imageModelHint')"></p>
+                        <div v-if="imageModels.length" class="flex flex-col sm:flex-row gap-2">
+                            <select class="field flex-1 min-w-0" :aria-label="st('studio.settings.chooseModel')" data-studio-image-model-list
+                                    @change="draft.imageModel = $event.target.value">
+                                <option value="" v-text="st('studio.settings.chooseModel')"></option>
+                                <option v-for="m in imageModels" :key="m.id" :value="m.id" v-text="m.id"></option>
+                            </select>
+                        </div>
+                        <p v-if="imageModelError" class="text-xs text-[var(--text-danger)]" v-text="imageModelError"></p>
+                        <button type="button" class="btn btn--sm" :disabled="!info.openai || !info.openai.has_key || loadingModels" @click="loadModels"
+                                v-text="loadingModels ? st('studio.settings.loadingModels') : st('studio.settings.loadModels')"></button>
                     </section>
 
                     <p v-if="saved" class="notice notice--success" role="status" v-text="st('studio.settings.saved')"></p>

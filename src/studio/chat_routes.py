@@ -231,9 +231,9 @@ def put_chat_settings():
 @studio_bp.route('/api/studio/settings/models', methods=['GET'])
 @login_required
 def list_provider_models():
-    """Each provider's live model list (only for a provider whose key is set)."""
+    """Each provider's live model list (only for a provider whose key is set), and OpenAI's image models."""
     _admin_only()
-    result = {'errors': {}}
+    result = {'errors': {}, 'openai_image': []}
     for name in providers.PROVIDERS:
         result[name] = []
         if not providers.api_key(name):
@@ -243,6 +243,12 @@ def list_provider_models():
         except Exception as e:  # shown to the administrator, never the key
             result['errors'][name] = studio_message('studio.settings.errors.listFailed',
                                                     error=type(e).__name__)
+    if providers.api_key('openai'):
+        try:
+            result['openai_image'] = images.list_models()
+        except Exception as e:
+            result['errors']['openai_image'] = studio_message('studio.settings.errors.listFailed',
+                                                              error=type(e).__name__)
     return jsonify(result)
 
 

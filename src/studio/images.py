@@ -11,9 +11,19 @@ material.
 The key comes from the environment only (``STUDIO_OPENAI_API_KEY``, see
 src/studio/providers/__init__.py) and image generation follows the GPT
 provider's switch on the chat settings page. The model is the studio setting
-``openai_image_model``, else ``STUDIO_OPENAI_IMAGE_MODEL``, else
-``gpt-image-1``. A request can take a minute; gunicorn's worker timeout
-(600 seconds in upstream's image) is well above the client's 300.
+``openai_image_model`` (an administrator picks it from the key's live list of
+image models), else ``STUDIO_OPENAI_IMAGE_MODEL``, else ``gpt-image-2.6-flare``.
+
+Read from OpenAI's image generation guide (November 2026): ``gpt-image-1``,
+the standalone app's model, was shut down on 2026-10-23; new integrations
+are pointed at GPT-Image-2.6 Sunburst or Flare, Flare for fast everyday
+generation. The three sizes are the guide's recommended ones; low, medium and
+high are the qualities every current GPT Image model accepts (the newest add
+``xhigh`` and ``max``, which are left out so a model from the list never
+refuses a choice). The image comes back as base64 PNG, with its token usage.
+
+A request can take a minute; gunicorn's worker timeout (600 seconds in
+upstream's image) is well above the client's 300.
 """
 
 import base64
@@ -24,7 +34,7 @@ from src.studio import providers
 
 SIZES = ('1024x1536', '1024x1024', '1536x1024')
 QUALITIES = ('low', 'medium', 'high')
-DEFAULT_MODEL = 'gpt-image-1'
+DEFAULT_MODEL = 'gpt-image-2.6-flare'
 MODEL_ENV = 'STUDIO_OPENAI_IMAGE_MODEL'
 MODEL_SETTING = 'openai_image_model'
 PROMPT_MAX = 4000
@@ -69,21 +79,40 @@ def describe():
     }
 
 
-def _client():
+def _client(timeout=TIMEOUT_SECONDS):
     from openai import OpenAI
     if _client_factory is not None:  # tests
         return _client_factory()
-    return OpenAI(api_key=providers.api_key('openai'), timeout=TIMEOUT_SECONDS, max_retries=1)
+    return OpenAI(api_key=providers.api_key('openai'), timeout=timeout, max_retries=1)
+
+
+def _usage(result):
+    """The request's token counts, as plain numbers: {"input_tokens", "output_tokens", "total_tokens"}."""
+    usage = getattr(result, 'usage', None)
+    counts = {}
+    for field in ('input_tokens', 'output_tokens', 'total_tokens'):
+        value = getattr(usage, field, None) if usage is not None else None
+        if isinstance(value, int):
+            counts[field] = value
+    return counts
 
 
 def generate(prompt, size, quality):
-    """One PNG from OpenAI's image API. Raises the openai package's errors."""
-    result = _client().images.generate(model=model(), prompt=prompt, size=size, quality=quality)
+    """(PNG bytes, token usage) from OpenAI's image API. Raises the openai package's errors."""
+    chosen = model()
+    result = _client().images.generate(model=chosen, prompt=prompt, size=size, quality=quality, output_format='png')
     item = result.data[0] if getattr(result, 'data', None) else None
     encoded = getattr(item, 'b64_json', None) if item is not None else None
     if not encoded:
         raise ValueError('the image API returned no image')
-    return base64.b64decode(encoded)
+    return base64.b64decode(encoded), dict(_usage(result), model=chosen)
+
+
+def list_models():
+    """[{"id", "label"}] of the image models the key may use, newest first. Raises on failure."""
+    client = _client(timeout=15.0)
+    found = [{'id': m.id, 'label': m.id} for m in client.models.list() if 'image' in m.id and 'dall-e' not in m.id]
+    return sorted(found, key=lambda x: x['id'], reverse=True)
 
 
 def file_name(prompt):
@@ -92,7 +121,7 @@ def file_name(prompt):
 
 
 def create(project, user, data):
-    """Make one image and store it as a material (added, not committed). Raises ImageError."""
+    """Make one image and store it as a material (added, not committed): (material, usage). Raises ImageError."""
     import openai
 
     from src.studio import materials
@@ -114,7 +143,7 @@ def create(project, user, data):
         raise ImageError('studio.images.errors.off')
 
     try:
-        png = generate(prompt, size, quality)
+        png, usage = generate(prompt, size, quality)
     except openai.AuthenticationError:
         raise ImageError('studio.images.errors.keyRefused', 502, env=providers.KEY_ENV['openai'])
     except openai.RateLimitError:
@@ -129,6 +158,6 @@ def create(project, user, data):
     if not png.startswith(PNG_SIGNATURE):
         raise ImageError('studio.images.errors.noImage', 502)
     try:
-        return materials.store_bytes(project, user, png, file_name(prompt))
+        return materials.store_bytes(project, user, png, file_name(prompt)), usage
     except materials.MaterialError as exc:
         raise ImageError(exc.key, 400, **exc.params)

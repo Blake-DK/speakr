@@ -172,9 +172,11 @@ site running this code can get its source.
   as a material through the same checks as an upload, named after the
   prompt.
 - The key is `STUDIO_OPENAI_API_KEY`; image generation follows GPT's switch on
-  the settings page. The model is the settings page's image model, else
-  `STUDIO_OPENAI_IMAGE_MODEL`, else `gpt-image-1`. Without a key the button
-  says why and nothing is sent.
+  the settings page. The model is the settings page's image model (picked
+  from the key's live list of image models), else `STUDIO_OPENAI_IMAGE_MODEL`,
+  else `gpt-image-2.6-flare`. The sizes and qualities are the ones every
+  current GPT Image model accepts. Without a key the button says why and
+  nothing is sent. The route answers with the request's token counts.
 
 ## Where it lives
 

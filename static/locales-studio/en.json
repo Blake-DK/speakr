@@ -433,7 +433,7 @@
         "imageModel": "That is not an image model name."
       },
       "imageModel": "Image model (GPT)",
-      "imageModelHint": "Makes the images of “Generate an image” on the Materials tab. Leave empty to use the default."
+      "imageModelHint": "Makes the images of “Generate an image” on the Materials tab. Pick one from the list of models the OpenAI key may use (Load the model list), or leave empty to use the default."
     }
   }
 }

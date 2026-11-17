@@ -26,6 +26,8 @@
                 const defaults = reactive({});
                 const draft = reactive({ claude: { model: '', enabled: true }, openai: { model: '', enabled: true }, imageModel: '' });
                 const imageDefault = ref('');
+                const imageModels = ref([]);
+                const imageModelError = ref('');
                 const models = reactive({});
                 const modelErrors = reactive({});
                 const loadingModels = ref(false);
@@ -63,6 +65,8 @@
                         models[name] = res.ok && res.data ? (res.data[name] || []) : [];
                         modelErrors[name] = res.ok && res.data && res.data.errors ? (res.data.errors[name] || '') : '';
                     }
+                    imageModels.value = res.ok && res.data ? (res.data.openai_image || []) : [];
+                    imageModelError.value = res.ok && res.data && res.data.errors ? (res.data.errors.openai_image || '') : '';
                 }
 
                 async function test(name) {
@@ -97,7 +101,8 @@
 
                 onMounted(load);
                 return {
-                    st, names, loading, loadError, info, keyEnv, defaults, draft, imageDefault, models, modelErrors, loadingModels,
+                    st, names, loading, loadError, info, keyEnv, defaults, draft, imageDefault, imageModels, imageModelError,
+                    models, modelErrors, loadingModels,
                     testing, testResult, saving, saved, saveError, loadModels, test, save,
                 };
             },

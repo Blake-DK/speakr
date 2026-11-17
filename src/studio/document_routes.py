@@ -113,7 +113,7 @@ def generate_project_image(project_id):
     # The request to the image API takes up to a minute: no transaction is held meanwhile.
     db.session.commit()
     try:
-        material = images.create(project, current_user, data)
+        material, usage = images.create(project, current_user, data)
         db.session.flush()
     except images.ImageError as exc:
         return _refused(exc)
@@ -123,4 +123,5 @@ def generate_project_image(project_id):
         db.session.rollback()
         materials.delete_stored_file(material)
         raise
-    return jsonify(materials.to_dict(material, True)), 201
+    # The token counts OpenAI reported (what the image cost), with the material.
+    return jsonify(dict(materials.to_dict(material, True), usage=usage)), 201
