@@ -281,6 +281,11 @@
                                    v-text="rec.title || ('#' + rec.id)"></a>
                                 <span :class="statusClass(rec.status)" v-text="statusLabel(rec.status)"></span>
                                 <span v-if="rec.is_archived" class="chip" v-text="st('studio.project.recordings.archived')"></span>
+                                <button v-if="rec.status === 'COMPLETED'" type="button" class="btn btn--sm" data-studio-discuss
+                                        :disabled="chat.streaming || !chat.anyProvider()" @click="chat.discussRecording(rec)">
+                                    <i class="fas fa-comments" aria-hidden="true"></i>
+                                    <span v-text="st('studio.project.recordings.discuss')"></span>
+                                </button>
                                 <span class="w-full text-xs text-[var(--text-muted)]">
                                     <span v-text="api.formatDate(rec.meeting_date || rec.created_at)"></span>
                                     <span v-if="rec.duration_seconds" v-text="' · ' + api.formatDuration(rec.duration_seconds)"></span>
@@ -403,6 +408,299 @@
                         </ul>
                     </section>
 
+                    <!-- Chats (static/js/studio/chat.js) -->
+                    <section v-if="tab === 'chats'" data-studio-section="chats" class="lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-6">
+                        <!-- The list: search, new chat, the workflows -->
+                        <div :class="chat.view === 'chat' ? 'hidden lg:block' : ''" data-studio-chat-list>
+                            <div class="flex gap-2 mb-3">
+                                <input v-model="chat.query" type="search" class="field flex-1 min-w-0" autocomplete="off"
+                                       :placeholder="st('studio.chat.search')" :aria-label="st('studio.chat.search')" @input="chat.onSearch">
+                                <button type="button" class="btn btn--primary shrink-0" data-studio-new-chat :disabled="chat.streaming"
+                                        @click="chat.newChat" :title="st('studio.chat.newChat')">
+                                    <i class="fas fa-plus" aria-hidden="true"></i>
+                                    <span class="lg:hidden" v-text="st('studio.chat.newChat')"></span>
+                                </button>
+                            </div>
+                            <p v-if="!chat.items.length && !chat.listLoading" class="text-sm text-[var(--text-muted)] mb-4"
+                               v-text="chat.query.trim() ? st('studio.chat.noMatch') : st('studio.chat.noChats')"></p>
+                            <ul v-else class="divide-y divide-[var(--border-primary)] mb-6 max-h-[45vh] lg:max-h-[50vh] overflow-y-auto" data-studio-chat-items>
+                                <li v-for="item in chat.items" :key="item.id" class="flex items-start gap-1">
+                                    <button type="button" class="flex-1 min-w-0 text-left px-2 py-2 rounded hover:bg-[var(--bg-tertiary)]"
+                                            :class="chat.current && chat.current.id === item.id ? 'bg-[var(--bg-tertiary)]' : ''"
+                                            @click="chat.openChat(item.id)">
+                                        <span class="block font-medium truncate" v-text="chat.titleOf(item)"></span>
+                                        <span v-if="item.match_snippet" class="block text-xs text-[var(--text-secondary)] break-words" v-text="item.match_snippet"></span>
+                                        <span class="block text-xs text-[var(--text-muted)] truncate">
+                                            <span v-if="item.workflow_title && item.workflow_title !== item.title" v-text="item.workflow_title + ' · '"></span>
+                                            <span v-text="api.formatDate(item.updated_at)"></span>
+                                            <span v-if="item.created_by_name && item.created_by !== null" v-text="' · ' + st('studio.chat.by', { name: item.created_by_name })"></span>
+                                            <span v-if="item.busy" class="text-[var(--text-accent)]" v-text="' · ' + st('studio.chat.busy')"></span>
+                                        </span>
+                                    </button>
+                                    <button v-if="item.can_manage" type="button" class="btn btn--sm btn--ghost shrink-0" :title="st('studio.chat.rename')"
+                                            :aria-label="st('studio.chat.rename')" @click="chat.rename(item)">
+                                        <i class="fas fa-pen" aria-hidden="true"></i>
+                                    </button>
+                                    <button v-if="item.can_manage" type="button" class="btn btn--sm btn--ghost shrink-0" :title="st('studio.common.delete')"
+                                            :aria-label="st('studio.common.delete')" @click="chat.remove(item)">
+                                        <i class="fas fa-trash" aria-hidden="true"></i>
+                                    </button>
+                                </li>
+                            </ul>
+                            <h3 class="section-label" v-text="st('studio.chat.workflowsTitle')"></h3>
+                            <p class="text-xs text-[var(--text-muted)] mb-2" v-text="st('studio.chat.workflowsHint')"></p>
+                            <ul class="grid gap-2 sm:grid-cols-2 lg:grid-cols-1" data-studio-workflows>
+                                <li v-for="w in chat.config.workflows" :key="w.id">
+                                    <button type="button" class="w-full text-left p-3 rounded-lg border border-[var(--border-primary)] hover:bg-[var(--bg-tertiary)]"
+                                            :data-studio-workflow="w.id" :disabled="chat.streaming || !chat.anyProvider()" @click="chat.openWorkflow(w)">
+                                        <span class="block font-medium">
+                                            <i v-if="w.web_search" class="fas fa-globe mr-1 text-[var(--text-muted)]" aria-hidden="true"></i>
+                                            <span v-text="w.title"></span>
+                                        </span>
+                                        <span class="block text-xs text-[var(--text-muted)]" v-text="w.description"></span>
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- The open chat -->
+                        <div :class="chat.view === 'list' ? 'hidden lg:flex' : 'flex'" class="flex-col min-w-0 min-h-[60vh] relative"
+                             data-studio-chat-view
+                             @dragover.prevent="chat.dragging = can.add_material" @dragleave.prevent="chat.dragging = false" @drop.prevent="chat.onDrop">
+                            <div class="flex flex-wrap items-center gap-2 mb-3">
+                                <button type="button" class="btn btn--sm btn--ghost lg:hidden" @click="chat.backToList">
+                                    <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                                    <span v-text="st('studio.chat.allChats')"></span>
+                                </button>
+                                <h3 class="text-lg font-semibold min-w-0 flex-1 truncate" data-studio-chat-title
+                                    v-text="chat.current ? chat.titleOf(chat.current) : st('studio.chat.newChat')"></h3>
+                                <template v-if="chat.current">
+                                    <button type="button" class="btn btn--sm btn--ghost" :disabled="!chat.messages.length" @click="chat.copyChat"
+                                            v-text="chat.copiedId === 'chat' ? st('studio.chat.copied') : st('studio.chat.copyChat')"></button>
+                                    <button v-if="chat.current.can_manage" type="button" class="btn btn--sm btn--ghost" @click="chat.rename()"
+                                            v-text="st('studio.chat.rename')"></button>
+                                    <button v-if="chat.current.can_manage" type="button" class="btn btn--sm btn--ghost" :disabled="chat.streaming"
+                                            @click="chat.remove()" v-text="st('studio.common.delete')"></button>
+                                </template>
+                            </div>
+
+                            <div :ref="chat.setScrollBox" class="flex-1 overflow-y-auto max-h-[65vh] space-y-4 pr-1" data-studio-messages aria-live="polite">
+                                <div v-if="!chat.messages.length && !chat.live" class="py-10 text-center">
+                                    <p class="font-medium mb-2" v-text="st('studio.chat.emptyTitle')"></p>
+                                    <p class="text-sm text-[var(--text-muted)] max-w-md mx-auto" v-text="st('studio.chat.emptyHint')"></p>
+                                </div>
+                                <div v-for="(m, index) in chat.messages" :key="m.id + ':' + index"
+                                     :class="m.role === 'user' ? 'flex justify-end' : ''" :data-studio-message="m.role">
+                                    <div v-if="m.role === 'user'" class="max-w-[90%] sm:max-w-[80%] rounded-xl px-4 py-3 bg-[var(--bg-tertiary)]">
+                                        <p class="text-xs text-[var(--text-muted)] mb-1" v-text="chat.senderLabel(m)"></p>
+                                        <p class="studio-text" v-text="m.content"></p>
+                                        <p v-if="chat.attachedLine(m)" class="mt-2 text-xs text-[var(--text-muted)]">
+                                            <i class="fas fa-paperclip mr-1" aria-hidden="true"></i><span v-text="chat.attachedLine(m)"></span>
+                                        </p>
+                                        <div v-if="m.can_edit && !chat.streaming" class="mt-2 text-right">
+                                            <button type="button" class="btn btn--sm btn--ghost" :title="st('studio.chat.editHint')" @click="chat.startEdit(m)">
+                                                <i class="fas fa-pen" aria-hidden="true"></i> <span v-text="st('studio.chat.edit')"></span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div v-else-if="m.role === 'error'" class="notice notice--danger" role="alert">
+                                        <div class="notice__body">
+                                            <p class="notice__message">
+                                                <span class="font-medium" v-text="st('studio.chat.answerFailed') + ': '"></span>
+                                                <span v-text="m.content"></span>
+                                            </p>
+                                            <div v-if="chat.canRegenerate(index)" class="notice__actions">
+                                                <button type="button" class="btn btn--sm" @click="chat.regenerate" v-text="st('studio.chat.regenerate')"></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div v-else class="rounded-xl px-4 py-3 border border-[var(--border-primary)]">
+                                        <div class="prose-flush break-words" v-html="chat.answerHtml(m)"></div>
+                                        <div class="mt-2 flex flex-wrap gap-2">
+                                            <button type="button" class="btn btn--sm btn--ghost" @click="chat.copyText(m.content, m.id)"
+                                                    v-text="chat.copiedId === m.id ? st('studio.chat.copied') : st('studio.chat.copy')"></button>
+                                            <button v-if="chat.canRegenerate(index)" type="button" class="btn btn--sm btn--ghost"
+                                                    :title="st('studio.chat.regenerateHint')" @click="chat.regenerate">
+                                                <i class="fas fa-rotate" aria-hidden="true"></i> <span v-text="st('studio.chat.regenerate')"></span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-if="chat.live" data-studio-message="live">
+                                    <div v-if="chat.live.error" class="notice notice--danger" role="alert">
+                                        <p class="notice__message" v-text="chat.live.error"></p>
+                                    </div>
+                                    <div v-if="chat.live.content || chat.live.thinking" class="rounded-xl px-4 py-3 border border-[var(--border-primary)]">
+                                        <p v-if="chat.live.thinking && !chat.live.content" class="text-[var(--text-muted)]">
+                                            <i class="fas fa-spinner fa-spin mr-2" aria-hidden="true"></i><span v-text="st('studio.chat.thinking')"></span>
+                                        </p>
+                                        <div v-else class="prose-flush break-words" v-html="chat.liveHtml()"></div>
+                                    </div>
+                                </div>
+                                <p v-if="chat.current && chat.current.busy && !chat.streaming" class="text-sm text-[var(--text-muted)]">
+                                    <i class="fas fa-spinner fa-spin mr-2" aria-hidden="true"></i><span v-text="st('studio.chat.busy')"></span>
+                                </p>
+                            </div>
+
+                            <p v-if="chat.error" class="notice notice--danger mt-3" role="alert" v-text="chat.error"></p>
+                            <p v-if="!chat.anyProvider() && chat.ready" class="notice notice--warn mt-3" v-text="st('studio.chat.noProvider')"></p>
+                            <p v-if="chat.uploading" class="mt-2 text-sm text-[var(--text-secondary)]" aria-live="polite"
+                               v-text="st('studio.chat.uploading', { count: chat.uploading })"></p>
+                            <div v-if="chat.dragging" class="absolute inset-0 z-10 rounded-lg border-2 border-dashed border-[var(--border-focus)] bg-[var(--bg-secondary)] flex items-center justify-center pointer-events-none">
+                                <p class="font-medium" v-text="st('studio.chat.dropHere')"></p>
+                            </div>
+
+                            <!-- The context bar: what goes with every answer -->
+                            <div v-if="chat.contextOpen" class="mt-3 p-3 rounded-lg border border-[var(--border-primary)]" data-studio-context>
+                                <p v-if="!chat.contextItems().length" class="text-sm text-[var(--text-muted)]" v-text="st('studio.chat.contextEmpty')"></p>
+                                <template v-else>
+                                    <p class="text-xs text-[var(--text-muted)] mb-2" v-text="st('studio.chat.contextHint')"></p>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button v-for="item in chat.contextItems()" :key="item.id" type="button" class="chip"
+                                                :class="item.excluded || item.hidden ? 'opacity-60 line-through' : ''" :disabled="item.hidden"
+                                                :aria-pressed="item.excluded || item.hidden ? 'false' : 'true'" @click="chat.toggleContext(item)">
+                                            <i class="fas fa-comment-dots mr-1" aria-hidden="true"></i>
+                                            <span v-text="item.title"></span>
+                                            <span class="text-xs ml-1" v-text="'(' + (item.hidden ? st('studio.chat.contextHidden') : (item.excluded ? st('studio.chat.excluded') : st('studio.chat.included'))) + ')'"></span>
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- The attach picker -->
+                            <div v-if="chat.pickerOpen" class="mt-3 p-3 rounded-lg border border-[var(--border-primary)] max-h-[40vh] overflow-y-auto" data-studio-attach>
+                                <div class="flex items-center justify-between gap-2 mb-2">
+                                    <p class="section-label" v-text="st('studio.chat.attachTitle')"></p>
+                                    <button type="button" class="btn btn--sm btn--ghost" @click="chat.pickerOpen = false" v-text="st('studio.chat.done')"></button>
+                                </div>
+                                <p class="text-xs font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.chat.materials')"></p>
+                                <p v-if="!chat.attachables.materials.length" class="text-xs text-[var(--text-muted)] mb-2" v-text="st('studio.chat.noMaterials')"></p>
+                                <label v-for="m in chat.attachables.materials" :key="'m' + m.id" class="flex items-center gap-2 py-1 text-sm">
+                                    <input type="checkbox" :checked="chat.isSelected('material', m.id)" @change="chat.toggleAttach('material', m)">
+                                    <span class="min-w-0 break-words flex-1" v-text="m.name"></span>
+                                    <span class="text-xs text-[var(--text-muted)] shrink-0" v-text="api.formatSize(m.size)"></span>
+                                </label>
+                                <p class="text-xs font-medium text-[var(--text-secondary)] mt-3 mb-1" v-text="st('studio.chat.recordings')"></p>
+                                <p v-if="!chat.attachables.recordings.length" class="text-xs text-[var(--text-muted)]" v-text="st('studio.chat.noRecordings')"></p>
+                                <label v-for="r in chat.attachables.recordings" :key="'r' + r.id" class="flex items-start gap-2 py-1 text-sm">
+                                    <input type="checkbox" class="mt-1" :checked="chat.isSelected('recording', r.id)" @change="chat.toggleAttach('recording', r)">
+                                    <span class="min-w-0 flex-1">
+                                        <span class="block break-words" v-text="r.title"></span>
+                                        <span class="block text-xs text-[var(--text-muted)]"
+                                              v-text="r.cut ? st('studio.chat.transcriptLong', { chars: api.formatNumber(chat.attachables.max_transcript_chars || 0) }) : st('studio.chat.transcriptChars', { chars: api.formatNumber(r.chars) })"></span>
+                                    </span>
+                                </label>
+                                <p class="mt-3 text-xs" :class="chat.overLimit() ? 'text-[var(--text-danger)]' : 'text-[var(--text-muted)]'" v-text="chat.sizeLine()"></p>
+                                <p v-if="can.add_material" class="text-xs text-[var(--text-muted)] hidden sm:block" v-text="st('studio.chat.dropHere')"></p>
+                            </div>
+
+                            <!-- The composer -->
+                            <div class="mt-3 border-t border-[var(--border-primary)] pt-3" data-studio-composer>
+                                <div class="flex flex-wrap items-center gap-2 mb-2 text-sm">
+                                    <label class="inline-flex items-center gap-2 min-w-0">
+                                        <span class="sr-only" v-text="st('studio.chat.model')"></span>
+                                        <select class="field py-1 max-w-[16rem]" :value="chat.provider" :disabled="chat.streaming"
+                                                @change="chat.setProvider($event.target.value)" :aria-label="st('studio.chat.model')">
+                                            <option v-for="o in chat.providerOptions()" :key="o.value" :value="o.value" :disabled="o.disabled" v-text="o.label"></option>
+                                        </select>
+                                    </label>
+                                    <label class="inline-flex items-center gap-1" :title="st('studio.chat.webSearchHint')">
+                                        <input type="checkbox" v-model="chat.webSearch" :disabled="chat.streaming">
+                                        <i class="fas fa-globe text-[var(--text-muted)]" aria-hidden="true"></i>
+                                        <span v-text="st('studio.chat.webSearch')"></span>
+                                    </label>
+                                    <button type="button" class="btn btn--sm" :aria-expanded="chat.pickerOpen ? 'true' : 'false'" data-studio-attach-button
+                                            @click="chat.openPicker">
+                                        <i class="fas fa-paperclip" aria-hidden="true"></i>
+                                        <span v-text="chat.selected.length ? st('studio.chat.attachCount', { count: chat.selected.length }) : st('studio.chat.attach')"></span>
+                                    </button>
+                                    <button type="button" class="btn btn--sm" :aria-expanded="chat.contextOpen ? 'true' : 'false'" @click="chat.openContext">
+                                        <i class="fas fa-brain" aria-hidden="true"></i>
+                                        <span v-text="chat.contextLabel()"></span>
+                                    </button>
+                                </div>
+                                <div v-if="chat.selected.length" class="flex flex-wrap gap-1 mb-2">
+                                    <button v-for="a in chat.selected" :key="a.type + a.id" type="button" class="chip" @click="chat.toggleAttach(a.type, a.type === 'material' ? { id: a.id } : { id: a.id })">
+                                        <i :class="a.type === 'material' ? 'fas fa-paperclip' : 'fas fa-microphone'" class="mr-1" aria-hidden="true"></i>
+                                        <span v-text="a.name"></span>
+                                        <i class="fas fa-xmark ml-1" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <div class="flex items-end gap-2">
+                                    <textarea v-model="chat.text" rows="3" class="field flex-1 min-w-0 resize-y" data-studio-composer-input
+                                              :placeholder="st('studio.chat.placeholder')" :aria-label="st('studio.chat.placeholder')"
+                                              :disabled="!chat.anyProvider()" @keydown="chat.onComposerKeydown"></textarea>
+                                    <button v-if="chat.streaming" type="button" class="btn btn--danger shrink-0" data-studio-stop
+                                            :title="st('studio.chat.stopHint')" @click="chat.stop">
+                                        <i class="fas fa-stop" aria-hidden="true"></i> <span v-text="st('studio.chat.stop')"></span>
+                                    </button>
+                                    <button v-else type="button" class="btn btn--primary shrink-0" data-studio-send
+                                            :disabled="!chat.text.trim() || !chat.anyProvider() || chat.overLimit()" @click="chat.sendComposer">
+                                        <i class="fas fa-paper-plane" aria-hidden="true"></i> <span v-text="st('studio.chat.send')"></span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- A workflow's form -->
+                        <div v-if="chat.workflow" class="modal-overlay" @click.self="chat.workflow = null" data-studio-workflow-form>
+                            <div class="modal-panel modal-panel--md" role="dialog" aria-modal="true" :aria-label="chat.workflow.title">
+                                <div class="modal-header">
+                                    <h3 class="modal-title" v-text="chat.workflow.title"></h3>
+                                    <button type="button" class="modal-close" @click="chat.workflow = null" :aria-label="st('studio.common.cancel')">
+                                        <i class="fas fa-xmark" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <form class="modal-body space-y-3" @submit.prevent="chat.startWorkflow">
+                                    <p class="text-sm text-[var(--text-secondary)]">
+                                        <span v-text="chat.workflow.description"></span>
+                                        <span v-if="chat.workflow.web_search" v-text="' ' + st('studio.chat.usesWebResearch')"></span>
+                                    </p>
+                                    <label v-for="f in chat.workflow.fields" :key="f.id" class="block">
+                                        <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="f.label"></span>
+                                        <input v-model="chat.workflowFields[f.id]" type="text" maxlength="2000" class="field w-full" :placeholder="f.placeholder">
+                                    </label>
+                                    <fieldset>
+                                        <legend class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.chat.baseOn')"></legend>
+                                        <p v-if="!chat.attachables.materials.length" class="text-xs text-[var(--text-muted)]" v-text="st('studio.chat.noAttachable')"></p>
+                                        <label v-for="m in chat.attachables.materials" :key="m.id" class="flex items-center gap-2 py-1 text-sm">
+                                            <input type="checkbox" :checked="chat.workflowMaterials.includes(m.id)" @change="chat.toggleWorkflowMaterial(m.id)">
+                                            <span class="min-w-0 break-words" v-text="m.name"></span>
+                                        </label>
+                                        <p v-if="chat.overLimit(chat.workflowAttachments())" class="text-xs text-[var(--text-danger)]"
+                                           v-text="chat.sizeLine(chat.workflowAttachments())"></p>
+                                    </fieldset>
+                                    <div class="modal-footer px-0 pb-0">
+                                        <button type="button" class="btn btn--ghost" @click="chat.workflow = null" v-text="st('studio.common.cancel')"></button>
+                                        <button type="submit" class="btn btn--primary" :disabled="chat.starting || chat.overLimit(chat.workflowAttachments())"
+                                                v-text="chat.starting ? st('studio.chat.starting') : st('studio.chat.generate')"></button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Editing the last message -->
+                        <div v-if="chat.editing" class="modal-overlay" @click.self="chat.editing = null">
+                            <div class="modal-panel modal-panel--md" role="dialog" aria-modal="true" :aria-label="st('studio.chat.editTitle')">
+                                <div class="modal-header">
+                                    <h3 class="modal-title" v-text="st('studio.chat.editTitle')"></h3>
+                                    <button type="button" class="modal-close" @click="chat.editing = null" :aria-label="st('studio.common.cancel')">
+                                        <i class="fas fa-xmark" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <div class="modal-body space-y-3">
+                                    <p class="text-sm text-[var(--text-secondary)]" v-text="st('studio.chat.editIntro')"></p>
+                                    <textarea v-model="chat.editing.text" rows="6" class="field w-full"></textarea>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn--ghost" @click="chat.editing = null" v-text="st('studio.common.cancel')"></button>
+                                    <button type="button" class="btn btn--primary" :disabled="!chat.editing.text.trim()" @click="chat.saveEdit"
+                                            v-text="st('studio.chat.saveAndRegenerate')"></button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
                     <!-- People -->
                     <section v-if="tab === 'people'" data-studio-section="people">
                         <p v-if="!project.sharing_enabled" class="notice notice--warn mb-4" v-text="st('studio.project.people.sharingOff')"></p>
@@ -471,6 +769,11 @@
     <script src="{{ url_for('static', filename='js/studio/strings.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='js/studio/api.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='js/studio/switcher.js', v=app_version) }}"></script>
+    {#- Model answers are Markdown: Speakr's own safe renderer (marked, then DOMPurify), as its chat uses. -#}
+    <script src="{{ url_for('static', filename='vendor/js/marked.min.js', v=app_version) }}"></script>
+    <script src="{{ url_for('static', filename='vendor/js/purify.min.js', v=app_version) }}"></script>
+    <script src="{{ url_for('static', filename='js/markdown-safe.js', v=app_version) }}"></script>
+    <script src="{{ url_for('static', filename='js/studio/chat.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='js/studio/project.js', v=app_version) }}"></script>
 </body>
 </html>

@@ -16,7 +16,7 @@ import pytest
 
 from src.app import db
 from src.studio import access
-from src.studio.models import StudioMaterial, StudioProject, StudioVoiceReference
+from src.studio.models import StudioChat, StudioMaterial, StudioMessage, StudioProject, StudioVoiceReference
 from tests.studio.support import file_part, sharing_on, world  # noqa: F401
 
 PDF = b'%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'
@@ -35,8 +35,15 @@ def matrix(world, sharing_on):
     material_id = up.get_json()['stored'][0]['id']
     voice = world.client(owner).post(f'/api/studio/projects/{project_id}/voice', json={'title': 't', 'text': 'Hello.'})
     assert voice.status_code == 201
+    chat = StudioChat(project_id=project_id, created_by=owner, title='Matrix chat', kind='chat', provider='claude')
+    db.session.add(chat)
+    db.session.flush()
+    message = StudioMessage(chat_id=chat.id, role='user', content='Hello', sender_id=owner)
+    db.session.add(message)
+    db.session.commit()
     return dict(world=world, owner=owner, member=member, admin=admin, outsider=outsider, project=project_id,
-                folder=folder_id, recording=recording_id, material=material_id, voice=voice.get_json()['id'])
+                folder=folder_id, recording=recording_id, material=material_id, voice=voice.get_json()['id'],
+                chat=chat.id, message=message.id)
 
 
 def _user(user_id):
@@ -81,11 +88,20 @@ ROUTES = [
     ('post', '/api/studio/projects/{p}/voice', {'text': 'x'}),
     ('get', '/api/studio/voice/{v}', None),
     ('delete', '/api/studio/voice/{v}', None),
+    ('get', '/api/studio/projects/{p}/chats', None),
+    ('post', '/api/studio/projects/{p}/chats', {'kind': 'chat'}),
+    ('get', '/api/studio/projects/{p}/attachables', None),
+    ('get', '/api/studio/chats/{c}', None),
+    ('put', '/api/studio/chats/{c}', {'title': 'x'}),
+    ('delete', '/api/studio/chats/{c}', None),
+    ('post', '/api/studio/chats/{c}/stream', {'message': 'x'}),
+    ('post', '/api/studio/chats/{c}/regenerate', {}),
+    ('put', '/api/studio/messages/{g}', {'content': 'x'}),
 ]
 
 
 def _routes(m):
-    return [(method, path.format(p=m['project'], m=m['material'], v=m['voice']), body)
+    return [(method, path.format(p=m['project'], m=m['material'], v=m['voice'], c=m['chat'], g=m['message']), body)
             for method, path, body in ROUTES]
 
 
@@ -96,7 +112,8 @@ def test_every_studio_route_with_an_id_is_covered_here():
     for rule in app.url_map.iter_rules():
         if rule.endpoint.startswith('studio.') and rule.arguments:
             path = (rule.rule.replace('<int:project_id>', '{p}').replace('<int:material_id>', '{m}')
-                    .replace('<int:reference_id>', '{v}'))
+                    .replace('<int:reference_id>', '{v}').replace('<int:chat_id>', '{c}')
+                    .replace('<int:message_id>', '{g}'))
             for method in rule.methods - {'HEAD', 'OPTIONS'}:
                 with_ids.add((method, path))
     assert with_ids == covered
@@ -113,6 +130,9 @@ def test_a_non_member_gets_not_found_on_every_route_and_nothing_changes(matrix):
     assert db.session.get(StudioProject, matrix['project']).notes == ''
     assert db.session.get(StudioMaterial, matrix['material']) is not None
     assert db.session.get(StudioVoiceReference, matrix['voice']) is not None
+    assert db.session.get(StudioChat, matrix['chat']).title == 'Matrix chat'
+    assert db.session.get(StudioMessage, matrix['message']).content == 'Hello'
+    assert StudioChat.query.filter_by(project_id=matrix['project']).count() == 1
 
 
 def test_an_unknown_id_is_the_same_not_found(matrix):

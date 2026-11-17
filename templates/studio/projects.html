@@ -65,6 +65,12 @@
                             <i class="fas fa-list" aria-hidden="true"></i>
                             <span v-text="st('studio.projects.allRecordings')"></span>
                         </a>
+                        {% if current_user.is_admin %}
+                        <a href="{{ url_for('studio.chat_settings_page') }}" class="btn btn--ghost" data-studio-chat-settings>
+                            <i class="fas fa-sliders" aria-hidden="true"></i>
+                            <span v-text="st('studio.projects.chatSettings')"></span>
+                        </a>
+                        {% endif %}
                         <button v-if="!showForm" type="button" class="btn btn--primary" data-studio-new-project @click="openForm">
                             <i class="fas fa-plus" aria-hidden="true"></i>
                             <span v-text="st('studio.projects.newProject')"></span>

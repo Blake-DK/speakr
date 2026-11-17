@@ -17,8 +17,10 @@ of a deleted account) could no longer be found.
   are emptied;
 - a recording: voice references made from it go;
 - an account: the projects it owned go, with their materials (rows and
-  files) and voice references; its places on other projects' People lists go,
-  and so does its record of the projects it opened.
+  files), voice references and chats; its places on other projects' People
+  lists go, and so does its record of the projects it opened. The chats it
+  made in other people's projects, and the messages it wrote, stay, with no
+  name on them.
 
 The administrators' rule (src/studio/admin_access.py) keeps two tables: the
 group memberships it made go with their project, group or account, and its
@@ -48,6 +50,11 @@ def _admin_tables():
     return StudioAdminGrant.__table__, StudioAdminProject.__table__
 
 
+def _chat_tables():
+    from src.studio.models import StudioChat, StudioMessage
+    return StudioChat.__table__, StudioMessage.__table__
+
+
 def _drop_projects(connection, project_ids):
     """Delete these projects and their rows; returns the storage locators of their materials."""
     projects, members, materials, voices = _tables()
@@ -55,6 +62,10 @@ def _drop_projects(connection, project_ids):
         return []
     locators = [row[0] for row in connection.execute(
         select(materials.c.storage_locator).where(materials.c.project_id.in_(project_ids)))]
+    chats, messages = _chat_tables()
+    chat_ids = select(chats.c.id).where(chats.c.project_id.in_(project_ids))
+    connection.execute(messages.delete().where(messages.c.chat_id.in_(chat_ids)))
+    connection.execute(chats.delete().where(chats.c.project_id.in_(project_ids)))
     for table in (materials, voices, members, _visits()) + _admin_tables():
         connection.execute(table.delete().where(table.c.project_id.in_(project_ids)))
     connection.execute(projects.delete().where(projects.c.id.in_(project_ids)))
@@ -92,6 +103,9 @@ def user_deleted(mapper, connection, target):
     connection.execute(visits.delete().where(visits.c.user_id == target.id))
     connection.execute(materials.update().where(materials.c.uploaded_by == target.id).values(uploaded_by=None))
     connection.execute(voices.update().where(voices.c.created_by == target.id).values(created_by=None))
+    chats, messages = _chat_tables()
+    connection.execute(chats.update().where(chats.c.created_by == target.id).values(created_by=None))
+    connection.execute(messages.update().where(messages.c.sender_id == target.id).values(sender_id=None))
     owned = [row[0] for row in connection.execute(select(projects.c.id).where(projects.c.owner_id == target.id))]
     locators = _drop_projects(connection, owned)
     if locators:

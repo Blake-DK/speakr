@@ -59,6 +59,11 @@
         return date.toISOString().slice(0, 10);
     }
 
+    function formatNumber(number) {
+        if (window.i18n && window.i18n.formatNumber) return window.i18n.formatNumber(number);
+        return String(number);
+    }
+
     function formatPercent(percent) {
         if (window.i18n && window.i18n.formatPercent) return window.i18n.formatPercent(percent, { maximumFractionDigits: 0 });
         return String(Math.round(percent));
@@ -89,5 +94,7 @@
         }
     }
 
-    window.studioApi = { csrfToken, request, formatSize, formatDate, formatPercent, formatDuration, hideLoader, initUpstreamI18n };
+    window.studioApi = {
+        csrfToken, request, formatSize, formatDate, formatNumber, formatPercent, formatDuration, hideLoader, initUpstreamI18n,
+    };
 })();

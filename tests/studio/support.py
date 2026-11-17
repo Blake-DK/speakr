@@ -16,8 +16,8 @@ from flask.testing import FlaskClient
 from src.app import app, db
 from src.models import (Folder, Group, GroupMembership, InternalShare, ProcessingJob, Recording, RecordingTag,
                         SharedRecordingState, User)
-from src.studio.models import (StudioAdminGrant, StudioAdminProject, StudioMaterial, StudioProject,
-                               StudioProjectMember, StudioProjectVisit, StudioVoiceReference)
+from src.studio.models import (StudioAdminGrant, StudioAdminProject, StudioChat, StudioMaterial, StudioMessage,
+                               StudioProject, StudioProjectMember, StudioProjectVisit, StudioVoiceReference)
 
 app.config['WTF_CSRF_ENABLED'] = False
 app.config['TESTING'] = True
@@ -88,6 +88,13 @@ class World:
         group_ids |= {gid for (gid,) in db.session.query(Group.id).filter(Group.created_by.in_(ids))}
         StudioProjectVisit.query.filter(StudioProjectVisit.user_id.in_(ids)).delete(synchronize_session=False)
         StudioAdminGrant.query.filter(StudioAdminGrant.user_id.in_(ids)).delete(synchronize_session=False)
+        # Chats of the test's projects, and any chat or message of its people elsewhere.
+        chat_ids = {cid for (cid,) in db.session.query(StudioChat.id).filter(db.or_(
+            StudioChat.project_id.in_(project_ids or [-1]), StudioChat.created_by.in_(ids)))}
+        chat_ids |= {cid for (cid,) in db.session.query(StudioMessage.chat_id).filter(StudioMessage.sender_id.in_(ids))}
+        if chat_ids:
+            StudioMessage.query.filter(StudioMessage.chat_id.in_(chat_ids)).delete(synchronize_session=False)
+            StudioChat.query.filter(StudioChat.id.in_(chat_ids)).delete(synchronize_session=False)
         if project_ids:
             for material in StudioMaterial.query.filter(StudioMaterial.project_id.in_(project_ids)).all():
                 materials.delete_stored_file(material)

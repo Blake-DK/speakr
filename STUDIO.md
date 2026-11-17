@@ -37,6 +37,13 @@ site running this code can get its source.
   (`static/js/modules/utils/platform.js`); the logic is in
   `static/js/studio/share-help.js`, tested by `share-help.test.js` with
   Speakr's Vitest suite.
+- A project's Chats tab: chats with a language model (Claude through
+  Anthropic's SDK, or GPT through OpenAI's Responses API), and eight guided
+  workflows (marketing scripts, campaign bundle, investor materials,
+  planning, script coverage, pitch deck, press kit, competitor comparison
+  with web research). See "The chats" below.
+- `/studio/settings` (site admins only, linked from the Projects page): each
+  provider's model, on or off, its live model list and a connection test.
 - `GET /api/studio/health`: `{"status": "ok"}`, for monitoring.
 - `whisper/`: a Whisper transcription service for Intel Arc (and NVIDIA) GPUs
   with an OpenAI-compatible route, which Speakr reaches through its `openasr`
@@ -89,11 +96,41 @@ site running this code can get its source.
   that point at it are let go of in the same transaction
   (`src/studio/cleanup.py`).
 
+### The chats
+
+- A chat belongs to its project (`studio_chat`, `studio_message`). Everyone
+  who sees the project sees its chats and may write in them; the chat's
+  maker or the project's owner renames and deletes it.
+- Keys come from the environment only, never the database or a page:
+  `STUDIO_ANTHROPIC_API_KEY` and `STUDIO_OPENAI_API_KEY`. A provider without
+  a key shows as unavailable. Models: `STUDIO_CLAUDE_MODEL` (default
+  `claude-opus-5-5`) and `STUDIO_OPENAI_MODEL`, unless an admin picks another
+  on the settings page (`studio_setting`, nothing secret in it).
+- An answer streams as Server-Sent Events from a generator that holds its own
+  app context, as Speakr's own chat does. One answer at a time per chat:
+  the chat is held while an answer is written (a second send gets 409) and
+  let go when it ends, or two minutes after a worker died. Stop, or a lost
+  connection, keeps what was written so far, marked "(stopped)". A provider
+  error is kept in the chat (role `error`), never sent to a provider.
+- A message can carry the project's materials (PDF and images as files, slide
+  decks as their text) and the transcripts of its recordings that the sender
+  may open, up to 20 attachments and 20 MB. When the history goes to a
+  provider, each attachment is read again with the access of the person
+  sending that turn; one they may not open, or that is gone, becomes a
+  one-line note.
+- The system prompt: the project's name, logline and notes, the workflow's
+  instructions, and the project's voice references the sender may open (a
+  12,000-character budget), each of which the person can leave out with the
+  context bar. Prompts and workflows are in `src/studio/workflows.py`.
+- Model answers are Markdown, shown through Speakr's own safe renderer
+  (`static/js/markdown-safe.js`), with images dropped and links opened in a
+  new tab.
+
 ## Where it lives
 
 | path | what |
 |---|---|
-| `src/studio/` | blueprint, access rule, sharing, the administrators' rule, materials, voice references, strings, database tables (`studio_*`), schema steps |
+| `src/studio/` | blueprint, access rule, sharing, the administrators' rule, materials, voice references, chats and their providers (`providers/`), workflows, strings, database tables (`studio_*`), schema steps |
 | `templates/studio/`, `static/js/studio/` | the add-on's pages |
 | `static/locales-studio/` | the add-on's interface strings |
 | `tests/studio/` | the add-on's tests (run with upstream's suite) |

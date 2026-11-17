@@ -11,12 +11,12 @@
 ARG BASE_IMAGE=speakr-base:lite
 FROM ${BASE_IMAGE}
 
-# The add-on's own Python packages (requirements-studio.txt: python-pptx and
+# The add-on's own Python packages (requirements-studio.txt: python-pptx, anthropic and
 # what it needs beyond upstream's lock), pinned and hash-checked like upstream's.
 COPY requirements-studio.txt /tmp/requirements-studio.txt
 RUN pip install --no-cache-dir --require-hashes --no-deps -r /tmp/requirements-studio.txt \
     && rm /tmp/requirements-studio.txt \
-    && python -c "import pptx"
+    && python -c "import pptx, anthropic"
 
 # whisper/ is a separate service with its own image (whisper/Dockerfile.arc);
 # upstream's "COPY . ." picks it up, but the app does not use it.

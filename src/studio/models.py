@@ -155,6 +155,73 @@ class StudioAdminProject(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class StudioChat(db.Model):
+    """A conversation with a language model in a project (src/studio/chats.py).
+
+    ``kind`` is ``chat`` or the id of a workflow (src/studio/workflows.py);
+    ``provider`` is the provider of the latest answer. ``busy_until`` and
+    ``busy_token`` hold the chat while an answer is being written, so a second
+    send to the same chat is refused instead of mixing the history; a holder
+    that died (a crashed worker) lets go when ``busy_until`` passes.
+    """
+
+    __tablename__ = 'studio_chat'
+
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('studio_project.id', ondelete='CASCADE'), nullable=False,
+                           index=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    title = db.Column(db.String(200), nullable=False, default='')
+    kind = db.Column(db.String(40), nullable=False, default='chat')
+    provider = db.Column(db.String(20), nullable=False, default='claude')
+    busy_until = db.Column(db.DateTime, nullable=True)
+    busy_token = db.Column(db.String(64), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class StudioMessage(db.Model):
+    """One message of a chat: the person's (``user``), the model's (``assistant``) or a failed answer (``error``).
+
+    ``error`` rows are shown in the chat and kept after a reload, but never
+    sent to a provider; regenerating or editing removes them with the rest of
+    the turn. ``attachments`` is a JSON list of ``{"type": "material" |
+    "recording", "id": ..., "name": ...}``; each is read again, with the access
+    of the person sending, whenever the history goes to a provider.
+    ``sender_id`` and ``created_at`` may be set by an importer. A message
+    stays when its sender's account is deleted (``sender_id`` becomes NULL).
+    """
+
+    __tablename__ = 'studio_message'
+
+    id = db.Column(db.Integer, primary_key=True)
+    chat_id = db.Column(db.Integer, db.ForeignKey('studio_chat.id', ondelete='CASCADE'), nullable=False,
+                        index=True)
+    role = db.Column(db.String(10), nullable=False)
+    content = db.Column(db.Text, nullable=False, default='')
+    attachments = db.Column(db.Text, nullable=False, default='[]')
+    sender_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    provider = db.Column(db.String(20), nullable=True)
+    model = db.Column(db.String(100), nullable=True)
+    # Token counts of an answer, as JSON ({"input_tokens": ..., "output_tokens": ..., ...}).
+    usage = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class StudioSetting(db.Model):
+    """A setting of the studio's chat that an administrator changes on its settings page.
+
+    Nothing secret: API keys come from the environment only
+    (src/studio/providers/__init__.py).
+    """
+
+    __tablename__ = 'studio_setting'
+
+    key = db.Column(db.String(100), primary_key=True)
+    value = db.Column(db.Text, nullable=False, default='')
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class StudioSchemaStep(db.Model):
     """The schema steps of src/studio/schema.py that have run on this database."""
 

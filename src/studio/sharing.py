@@ -22,8 +22,9 @@ How a project maps onto Speakr:
 - Removing the last person makes the project private again: the folder goes
   back to being a personal folder, the group is deleted, and every share the
   folder made ends. Shares someone made by hand in Speakr stay.
-- Deleting a project deletes its materials, voice references, its group and
-  its folder. The recordings stay with their owners, outside any folder.
+- Deleting a project deletes its materials, voice references, chats, its
+  group and its folder. The recordings stay with their owners, outside any
+  folder.
 - With STUDIO_ADMINS_SEE_RECORDINGS on, every project keeps its group and
   group folder even with an empty People list, and the site admins are
   members of it (src/studio/admin_access.py); each change here ends with
@@ -385,6 +386,8 @@ def delete_project(project):
         db.session.delete(material)
     StudioVoiceReference.query.filter_by(project_id=project.id).delete()
     StudioProjectVisit.query.filter_by(project_id=project.id).delete()
+    from src.studio import chats
+    chats.delete_for_projects([project.id])
     if folder is not None:
         recording_ids = [rid for (rid,) in db.session.query(Recording.id).filter(Recording.folder_id == folder.id)]
         recording_ids += [rid for (rid,) in db.session.query(InternalShare.recording_id).filter(

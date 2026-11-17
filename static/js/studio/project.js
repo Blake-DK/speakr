@@ -1,6 +1,7 @@
 /**
  * A project's home page (templates/studio/project.html): details,
- * recordings, materials, voice references and the People list.
+ * recordings, materials, voice references, chats (static/js/studio/chat.js)
+ * and the People list.
  *
  * Recordings are uploaded through Speakr's own upload route (POST /upload)
  * with the project's folder, so Speakr's queue transcribes them as any other
@@ -490,6 +491,14 @@
                     }
                 }
 
+                // --- chats ---------------------------------------------------
+                // static/js/studio/chat.js; loaded when the Chats tab is first opened.
+                const chat = window.studioChat.useChat({
+                    projectId, api, st, can, voiceItems,
+                    onMaterialsChanged: loadMaterials,
+                    selectTab: (id) => selectTab(id),
+                });
+
                 // --- start ---------------------------------------------------
                 const counts = computed(() => ({
                     recordings: recordings.value.length + (hiddenRecordings.value.count || 0),
@@ -503,6 +512,7 @@
                     { id: 'recordings', icon: 'fas fa-microphone', count: counts.value.recordings },
                     { id: 'materials', icon: 'fas fa-paperclip', count: counts.value.materials },
                     { id: 'voice', icon: 'fas fa-comment-dots', count: counts.value.voice },
+                    { id: 'chats', icon: 'fas fa-comments', count: chat.ready ? chat.items.length : null },
                     { id: 'people', icon: 'fas fa-users', count: counts.value.people },
                 ]);
 
@@ -521,22 +531,29 @@
                     loading.value = false;
                     const wanted = (window.location.hash || '').replace('#', '');
                     if (tabs.value.some(t => t.id === wanted)) tab.value = wanted;
+                    // The chats' list and models load after the rest: the Recordings tab's
+                    // "Discuss in chat" needs to know whether a model is available.
+                    chat.init();
                 }
 
                 function selectTab(id) {
                     tab.value = id;
                     say('');
+                    if (id === 'chats') chat.loadList();
                     try {
                         window.history.replaceState({}, '', `${window.location.pathname}#${id}`);
                     } catch (err) { /* best effort */ }
                 }
 
                 onMounted(loadAll);
-                onBeforeUnmount(() => { if (pollTimer) clearTimeout(pollTimer); });
+                onBeforeUnmount(() => {
+                    if (pollTimer) clearTimeout(pollTimer);
+                    chat.stopTimers();
+                });
 
                 return {
                     st, api, language, tab, tabs, selectTab, loading, loadError, loadAll, project, can, flash, flashError,
-                    switcher,
+                    switcher, chat,
                     editing, saving, draft, startEdit, saveDetails, deleteProject,
                     recordings, hiddenRecordings, hiddenRecordingsLine,
                     uploads, recordingInput, recordingDrag, statusLabel, statusClass, uploadLine,

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    {#- Studio add-on page: the chat settings (administrators only). The <head>
+        follows group-admin.html, as templates/studio/projects.html does. -#}
+    {% include 'includes/theme_account.html' %}
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+    <title>{{ page_title }} - Speakr</title>
+
+    <!-- Loading overlay to prevent FOUC - MUST be first -->
+    {% include 'includes/loading_overlay.html' %}
+
+    <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}" type="image/svg+xml">
+    <script src="{{ url_for('static', filename='vendor/js/vue.global.js', v=app_version) }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/css/fontawesome.min.css', v=app_version) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v=app_version) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/primitives.css', v=app_version) }}">
+    {% include 'includes/i18n_bootstrap.html' %}
+    <script src="{{ url_for('static', filename='js/i18n.js', v=app_version) }}"></script>
+    <style>
+        [v-cloak] { display: none !important; }
+    </style>
+    <script>
+        // Light or dark mode and the colour scheme, before the first paint (as group-admin.html).
+        (function applyTheme() {
+            if (!document.documentElement) return;
+            const savedMode = localStorage.getItem('darkMode');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            document.documentElement.classList.toggle('dark', savedMode === 'true' || (savedMode === null && prefersDark));
+            const savedScheme = localStorage.getItem('colorScheme') || (window.speakrThemeDefaults || {}).colorScheme || 'blue';
+            const prefix = document.documentElement.classList.contains('dark') ? 'theme-dark-' : 'theme-light-';
+            ['blue', 'emerald', 'purple', 'rose', 'amber', 'teal'].forEach(scheme => {
+                document.documentElement.classList.remove(`theme-light-${scheme}`, `theme-dark-${scheme}`);
+            });
+            if (savedScheme !== 'blue') document.documentElement.classList.add(prefix + savedScheme);
+        })();
+    </script>
+    <script>
+        window.__STUDIO_I18N = {{ studio_strings|tojson }};
+        window.__STUDIO_PAGE = {
+            userLanguage: {{ user_language|tojson }},
+            sourceUrl: {{ studio_source_url|tojson }}
+        };
+    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css', v=app_version) }}">
+    {% include 'includes/ui_theme.html' %}
+</head>
+<body class="bg-[var(--bg-primary)] text-[var(--text-primary)]">
+    {% set page_label = page_title %}
+    {% include 'components/page-header.html' %}
+    <div id="app" v-cloak class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col min-h-screen">
+        <main class="flex-grow max-w-3xl w-full mx-auto" data-studio-settings>
+            <nav class="mb-4 text-sm">
+                <a href="/studio" class="inline-flex items-center gap-1 text-[var(--text-accent)] hover:underline">
+                    <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                    <span v-text="st('studio.settings.back')"></span>
+                </a>
+            </nav>
+            <div class="bg-[var(--bg-secondary)] p-4 sm:p-6 rounded-xl shadow-lg border border-[var(--border-primary)]">
+                <h2 class="text-2xl font-semibold mb-2" v-text="st('studio.settings.title')"></h2>
+                <p class="text-sm text-[var(--text-secondary)] mb-6" v-text="st('studio.settings.intro')"></p>
+
+                <div v-if="loading" class="py-8 text-center text-[var(--text-muted)]">
+                    <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
+                    <span class="ml-2" v-text="st('studio.common.loading')"></span>
+                </div>
+                <p v-else-if="loadError" class="notice notice--danger" role="alert" v-text="st('studio.common.loadFailed')"></p>
+
+                <div v-else class="space-y-6">
+                    <section v-for="name in names" :key="name" class="p-4 rounded-lg border border-[var(--border-primary)] space-y-3"
+                             :data-studio-provider="name">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <h3 class="text-lg font-semibold" v-text="info[name].label"></h3>
+                            <label class="inline-flex items-center gap-2 text-sm">
+                                <input type="checkbox" v-model="draft[name].enabled">
+                                <span v-text="st('studio.settings.enabled')"></span>
+                            </label>
+                        </div>
+                        <p class="text-sm" :class="info[name].has_key ? 'text-[var(--text-secondary)]' : 'text-[var(--text-danger)]'"
+                           v-text="info[name].has_key ? st('studio.settings.keySet', { env: keyEnv[name] }) : st('studio.settings.noKey', { env: keyEnv[name] })"></p>
+                        <label class="block">
+                            <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.settings.model')"></span>
+                            <input v-model="draft[name].model" type="text" maxlength="100" class="field w-full" autocomplete="off"
+                                   :placeholder="st('studio.settings.modelDefault', { model: defaults[name] })">
+                        </label>
+                        <p class="text-xs text-[var(--text-muted)]" v-text="st('studio.settings.modelHint')"></p>
+                        <div v-if="models[name] && models[name].length" class="flex flex-col sm:flex-row gap-2">
+                            <select class="field flex-1 min-w-0" :aria-label="st('studio.settings.chooseModel')"
+                                    @change="draft[name].model = $event.target.value">
+                                <option value="" v-text="st('studio.settings.chooseModel')"></option>
+                                <option v-for="m in models[name]" :key="m.id" :value="m.id" v-text="m.label === m.id ? m.id : (m.label + ' (' + m.id + ')')"></option>
+                            </select>
+                        </div>
+                        <p v-if="modelErrors[name]" class="text-xs text-[var(--text-danger)]" v-text="modelErrors[name]"></p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="btn btn--sm" :disabled="!info[name].has_key || loadingModels" @click="loadModels"
+                                    v-text="loadingModels ? st('studio.settings.loadingModels') : st('studio.settings.loadModels')"></button>
+                            <button type="button" class="btn btn--sm" :disabled="!info[name].has_key || testing[name]" @click="test(name)"
+                                    v-text="testing[name] ? st('studio.settings.testing') : st('studio.settings.test')"></button>
+                        </div>
+                        <p v-if="testResult[name]" class="text-sm" role="status"
+                           :class="testResult[name].ok ? 'text-[var(--text-success)]' : 'text-[var(--text-danger)]'"
+                           v-text="testResult[name].message"></p>
+                    </section>
+
+                    <p v-if="saved" class="notice notice--success" role="status" v-text="st('studio.settings.saved')"></p>
+                    <p v-if="saveError" class="notice notice--danger" role="alert" v-text="saveError"></p>
+                    <button type="button" class="btn btn--primary" :disabled="saving" data-studio-settings-save @click="save"
+                            v-text="saving ? st('studio.common.saving') : st('studio.common.save')"></button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/studio/strings.js', v=app_version) }}"></script>
+    <script src="{{ url_for('static', filename='js/studio/api.js', v=app_version) }}"></script>
+    <script src="{{ url_for('static', filename='js/studio/settings.js', v=app_version) }}"></script>
+</body>
+</html>

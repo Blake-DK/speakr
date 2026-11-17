@@ -354,7 +354,6 @@ def list_voice(project_id):
 @studio_bp.route('/api/studio/projects/<int:project_id>/voice', methods=['POST'])
 @login_required
 def add_voice(project_id):
-    from src.studio.models import StudioVoiceReference
     project, role = access.project_for(project_id, current_user)
     if project is None:
         return _not_found()
@@ -363,28 +362,15 @@ def add_voice(project_id):
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         data = {}
-    if data.get('recording_id') is not None:
-        try:
-            source = projects.recording_for_voice(project, current_user, data.get('recording_id'))
-        except projects.ProjectError as exc:
-            return _error(exc.key, exc.status, **exc.params)
-        if StudioVoiceReference.query.filter_by(project_id=project.id, recording_id=source.id).first():
-            return _error('studio.voice.errors.already', 400)
-        reference = StudioVoiceReference(
-            project_id=project.id, created_by=current_user.id, recording_id=source.id,
-            title=voice.clean_title(data.get('title'), projects.recording_titles([source.id], current_user).get(
-                source.id) or studio_t('studio.voice.untitledRecording')))
-    else:
-        raw = data.get('text')
-        if not isinstance(raw, str):
-            return _error('studio.voice.errors.empty', 400)
-        text = voice.clean_transcript(raw)[:voice.MAX_TEXT_CHARS]
-        if not text:
-            return _error('studio.voice.errors.empty', 400)
-        reference = StudioVoiceReference(
-            project_id=project.id, created_by=current_user.id, text=text,
-            title=voice.clean_title(data.get('title'), studio_t('studio.voice.untitledText')))
-    db.session.add(reference)
+    try:
+        if data.get('recording_id') is not None:
+            reference = voice.create_from_recording(project, current_user, data.get('recording_id'),
+                                                    data.get('title'))
+        else:
+            reference = voice.create_from_text(project, current_user, data.get('text'), data.get('title'))
+    except projects.ProjectError as exc:
+        db.session.rollback()
+        return _error(exc.key, exc.status, **exc.params)
     db.session.commit()
     titles = projects.recording_titles([reference.recording_id], current_user)
     return jsonify(voice.to_dict(reference, titles.get(reference.recording_id), True, with_text=True)), 201
@@ -413,3 +399,7 @@ def delete_voice(reference_id):
     db.session.delete(reference)
     db.session.commit()
     return jsonify({'success': True})
+
+
+# The chats (src/studio/chat_routes.py) are routes of this blueprint too.
+from src.studio import chat_routes as _chat_routes  # noqa: E402,F401
