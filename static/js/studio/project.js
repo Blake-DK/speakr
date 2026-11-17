@@ -114,6 +114,8 @@
 
                 // --- recordings ----------------------------------------------
                 const recordings = ref([]);
+                // Recordings in the project the viewer cannot open: {count, owners}.
+                const hiddenRecordings = ref({ count: 0, owners: [] });
                 const uploads = ref([]);
                 const recordingInput = ref(null);
                 const recordingDrag = ref(false);
@@ -121,9 +123,21 @@
 
                 async function loadRecordings() {
                     const res = await api.request('GET', `/api/studio/projects/${projectId}/recordings`);
-                    if (res.ok && res.data) recordings.value = res.data.items || [];
+                    if (res.ok && res.data) {
+                        recordings.value = res.data.items || [];
+                        hiddenRecordings.value = res.data.hidden || { count: 0, owners: [] };
+                    }
                     schedulePoll();
                 }
+
+                const hiddenRecordingsLine = computed(() => {
+                    const hidden = hiddenRecordings.value;
+                    if (!hidden.count) return '';
+                    const params = { count: hidden.count, owners: (hidden.owners || []).join(', ') };
+                    return recordings.value.length
+                        ? st('studio.project.recordings.hiddenSome', params)
+                        : st('studio.project.recordings.hiddenAll', params);
+                });
 
                 function schedulePoll() {
                     if (pollTimer) clearTimeout(pollTimer);
@@ -478,7 +492,7 @@
 
                 // --- start ---------------------------------------------------
                 const counts = computed(() => ({
-                    recordings: recordings.value.length,
+                    recordings: recordings.value.length + (hiddenRecordings.value.count || 0),
                     materials: materials.value.length,
                     voice: voiceItems.value.length,
                     people: project.value ? project.value.people.length : 0,
@@ -524,7 +538,8 @@
                     st, api, language, tab, tabs, selectTab, loading, loadError, loadAll, project, can, flash, flashError,
                     switcher,
                     editing, saving, draft, startEdit, saveDetails, deleteProject,
-                    recordings, uploads, recordingInput, recordingDrag, statusLabel, statusClass, uploadLine,
+                    recordings, hiddenRecordings, hiddenRecordingsLine,
+                    uploads, recordingInput, recordingDrag, statusLabel, statusClass, uploadLine,
                     pickRecordings, onRecordingFiles, onRecordingDrop,
                     materials, materialInput, materialDrag, materialUploading, materialRefused, openText,
                     pickMaterials, onMaterialFiles, onMaterialDrop, materialUrl, materialIcon, materialMeta,

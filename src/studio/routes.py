@@ -12,7 +12,7 @@ from flask import Blueprint, abort, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from src.database import db
-from src.studio import access, landing, materials, projects, sharing, voice
+from src.studio import access, admin_access, landing, materials, projects, sharing, voice
 from src.studio.i18n import studio_message, studio_strings, studio_strings_for, studio_t, user_language
 
 studio_bp = Blueprint('studio', __name__)
@@ -39,6 +39,9 @@ def _apply_schema_steps(state):
             apply_schema_steps()
         except Exception:
             state.app.logger.exception("Studio schema steps could not run")
+        # STUDIO_ADMINS_SEE_RECORDINGS: bring every project in line, or take
+        # back what an earlier "on" made (src/studio/admin_access.py).
+        admin_access.startup(state.app.logger)
 
 
 studio_bp.record_once(_apply_schema_steps)
@@ -46,6 +49,10 @@ studio_bp.record_once(_apply_schema_steps)
 # The bare address reached from outside the app opens the Projects page
 # (src/studio/landing.py).
 landing.register(studio_bp)
+
+# Site admins' memberships follow their admin status, before and after requests
+# (src/studio/admin_access.py; does nothing while the setting is off).
+admin_access.register(studio_bp)
 
 
 @studio_bp.app_context_processor
@@ -175,7 +182,9 @@ def project_recordings(project_id):
     project, _role = access.project_for(project_id, current_user)
     if project is None:
         return _not_found()
-    return jsonify({'items': projects.recording_list(project, current_user)})
+    visible, hidden = projects.split_recordings(project, current_user)
+    return jsonify({'items': projects.recording_list(project, current_user, visible),
+                    'hidden': projects.hidden_summary(hidden)})
 
 
 @studio_bp.route('/api/studio/projects/<int:project_id>/recording-folder', methods=['POST'])

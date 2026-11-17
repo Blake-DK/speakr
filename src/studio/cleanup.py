@@ -19,6 +19,10 @@ of a deleted account) could no longer be found.
 - an account: the projects it owned go, with their materials (rows and
   files) and voice references; its places on other projects' People lists go,
   and so does its record of the projects it opened.
+
+The administrators' rule (src/studio/admin_access.py) keeps two tables: the
+group memberships it made go with their project, group or account, and its
+mark on a project goes with the project or the project's group.
 """
 
 import logging
@@ -39,6 +43,11 @@ def _visits():
     return StudioProjectVisit.__table__
 
 
+def _admin_tables():
+    from src.studio.models import StudioAdminGrant, StudioAdminProject
+    return StudioAdminGrant.__table__, StudioAdminProject.__table__
+
+
 def _drop_projects(connection, project_ids):
     """Delete these projects and their rows; returns the storage locators of their materials."""
     projects, members, materials, voices = _tables()
@@ -46,7 +55,7 @@ def _drop_projects(connection, project_ids):
         return []
     locators = [row[0] for row in connection.execute(
         select(materials.c.storage_locator).where(materials.c.project_id.in_(project_ids)))]
-    for table in (materials, voices, members, _visits()):
+    for table in (materials, voices, members, _visits()) + _admin_tables():
         connection.execute(table.delete().where(table.c.project_id.in_(project_ids)))
     connection.execute(projects.delete().where(projects.c.id.in_(project_ids)))
     return locators
@@ -59,9 +68,13 @@ def folder_deleted(mapper, connection, target):
 
 def group_deleted(mapper, connection, target):
     projects, members, _materials, _voices = _tables()
+    grants, marks = _admin_tables()
+    connection.execute(grants.delete().where(grants.c.group_id == target.id))
     ids = [row[0] for row in connection.execute(select(projects.c.id).where(projects.c.group_id == target.id))]
     if ids:
         connection.execute(members.delete().where(members.c.project_id.in_(ids)))
+        connection.execute(grants.delete().where(grants.c.project_id.in_(ids)))
+        connection.execute(marks.delete().where(marks.c.project_id.in_(ids)))
         connection.execute(projects.update().where(projects.c.id.in_(ids)).values(group_id=None))
 
 
@@ -73,6 +86,8 @@ def recording_deleted(mapper, connection, target):
 def user_deleted(mapper, connection, target):
     projects, members, materials, voices = _tables()
     connection.execute(members.delete().where(members.c.user_id == target.id))
+    grants = _admin_tables()[0]
+    connection.execute(grants.delete().where(grants.c.user_id == target.id))
     visits = _visits()
     connection.execute(visits.delete().where(visits.c.user_id == target.id))
     connection.execute(materials.update().where(materials.c.uploaded_by == target.id).values(uploaded_by=None))

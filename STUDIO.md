@@ -58,7 +58,22 @@ site running this code can get its source.
   members of its group; and site admins. Everyone else gets "not found".
   Changes made to the group in Speakr's group screens can narrow that list,
   never widen it. A project lists only the recordings Speakr lets the viewer
-  open. The rule is in `src/studio/access.py`.
+  open, and says how many others it holds and whose they are. The rule is in
+  `src/studio/access.py`.
+- Site admins see every project, but Speakr opens a recording only to its
+  owner and the people it is shared with. With
+  `STUDIO_ADMINS_SEE_RECORDINGS=true` (off by default) every project keeps a
+  Speakr group and group folder, private projects included, and every site
+  admin other than the owner is a member of each project's group, so Speakr
+  shares the folder's recordings with them read-only and keeps that in step
+  (`src/studio/admin_access.py`). The memberships it makes are recorded in
+  `studio_admin_grant` and taken back exactly: when someone stops being an
+  admin (after the request that changed it, or before their next request),
+  and for everyone when the setting goes off (at the next start, which also
+  makes a project with an empty People list private again). The owner and the
+  people on the People list are told on the project page. Being in the group
+  also lets an admin add recordings of their own to the project. Needs
+  `ENABLE_INTERNAL_SHARING=true`; without it the rule waits.
 - Materials are stored through Speakr's storage service (local disk or S3)
   under `studio/materials/`. Accepted: PDF, PPTX, PNG, JPG, WebP and GIF, up
   to 30 MB each, checked by their first bytes as well as their names.
@@ -70,7 +85,7 @@ site running this code can get its source.
 
 | path | what |
 |---|---|
-| `src/studio/` | blueprint, access rule, sharing, materials, voice references, strings, database tables (`studio_*`), schema steps |
+| `src/studio/` | blueprint, access rule, sharing, the administrators' rule, materials, voice references, strings, database tables (`studio_*`), schema steps |
 | `templates/studio/`, `static/js/studio/` | the add-on's pages |
 | `static/locales-studio/` | the add-on's interface strings |
 | `tests/studio/` | the add-on's tests (run with upstream's suite) |

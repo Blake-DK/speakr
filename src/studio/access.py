@@ -20,7 +20,10 @@ nothing tells them that it exists (studio routes answer 404, never 403).
 Recordings are not decided here: a project lists only the recordings of its
 folder that Speakr itself lets the viewer open (``has_recording_access``), so
 an admin who is not on a project's People list sees its materials but not
-other people's recordings.
+other people's recordings, unless the site switches on
+STUDIO_ADMINS_SEE_RECORDINGS: then every site admin is a member of every
+project's Speakr group and Speakr shares the folder's recordings with them,
+read-only (src/studio/admin_access.py). Their role here stays ADMIN.
 
 What each role may do (``capabilities``): owners do everything; people on the
 People list and site admins read the project, edit its logline and notes, and
@@ -29,7 +32,8 @@ deletes the project and changes its transcription hints (they are settings of
 the Speakr folder, which Speakr lets only the folder's owner change); a site
 admin may also delete a project whose owner's account no longer exists.
 Adding a recording needs the folder in Speakr, so it is for the owner and the
-People list only.
+People list, and for site admins while STUDIO_ADMINS_SEE_RECORDINGS makes
+them members of the project's group.
 """
 
 from src.database import db
@@ -136,8 +140,9 @@ def owner_exists(project):
 
 def capabilities(project, role, user):
     """What the viewer may do on this project, for the routes and for the page."""
+    from src.studio import admin_access
     is_owner = role == OWNER
-    can_use_folder = role in (OWNER, MEMBER)
+    can_use_folder = role in (OWNER, MEMBER) or (role == ADMIN and admin_access.active())
     return {
         'edit_details': role in (OWNER, MEMBER, ADMIN),
         'rename': is_owner,

@@ -119,6 +119,42 @@ class StudioProjectVisit(db.Model):
     opened_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class StudioAdminGrant(db.Model):
+    """A membership of a project's Speakr group that the studio made because the person is a site admin.
+
+    Only with STUDIO_ADMINS_SEE_RECORDINGS on (src/studio/admin_access.py). The
+    row says the studio made the membership, so it takes back exactly these
+    and never one that the People list or a person in Speakr's group screens
+    made.
+    """
+
+    __tablename__ = 'studio_admin_grant'
+    __table_args__ = (db.UniqueConstraint('project_id', 'user_id', name='uq_studio_admin_grant'),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('studio_project.id', ondelete='CASCADE'), nullable=False,
+                           index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('group.id', ondelete='CASCADE'), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class StudioAdminProject(db.Model):
+    """A project the administrators' rule has set up: its Speakr group and group folder.
+
+    Only with STUDIO_ADMINS_SEE_RECORDINGS on. When the setting goes off, a
+    project with this row and an empty People list is made private again (its
+    group goes); one with people on its list keeps the group for them.
+    """
+
+    __tablename__ = 'studio_admin_project'
+
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('studio_project.id', ondelete='CASCADE'), nullable=False,
+                           unique=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class StudioSchemaStep(db.Model):
     """The schema steps of src/studio/schema.py that have run on this database."""
 

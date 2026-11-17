@@ -16,8 +16,8 @@ from flask.testing import FlaskClient
 from src.app import app, db
 from src.models import (Folder, Group, GroupMembership, InternalShare, ProcessingJob, Recording, RecordingTag,
                         SharedRecordingState, User)
-from src.studio.models import (StudioMaterial, StudioProject, StudioProjectMember, StudioProjectVisit,
-                               StudioVoiceReference)
+from src.studio.models import (StudioAdminGrant, StudioAdminProject, StudioMaterial, StudioProject,
+                               StudioProjectMember, StudioProjectVisit, StudioVoiceReference)
 
 app.config['WTF_CSRF_ENABLED'] = False
 app.config['TESTING'] = True
@@ -87,10 +87,12 @@ class World:
         group_ids = {p.group_id for p in projects if p.group_id}
         group_ids |= {gid for (gid,) in db.session.query(Group.id).filter(Group.created_by.in_(ids))}
         StudioProjectVisit.query.filter(StudioProjectVisit.user_id.in_(ids)).delete(synchronize_session=False)
+        StudioAdminGrant.query.filter(StudioAdminGrant.user_id.in_(ids)).delete(synchronize_session=False)
         if project_ids:
             for material in StudioMaterial.query.filter(StudioMaterial.project_id.in_(project_ids)).all():
                 materials.delete_stored_file(material)
-            for model in (StudioMaterial, StudioVoiceReference, StudioProjectMember, StudioProjectVisit):
+            for model in (StudioMaterial, StudioVoiceReference, StudioProjectMember, StudioProjectVisit,
+                          StudioAdminGrant, StudioAdminProject):
                 model.query.filter(model.project_id.in_(project_ids)).delete(synchronize_session=False)
             StudioProject.query.filter(StudioProject.id.in_(project_ids)).delete(synchronize_session=False)
         recording_ids = [rid for (rid,) in db.session.query(Recording.id).filter(Recording.user_id.in_(ids))]
@@ -167,6 +169,13 @@ def sharing_off():
         yield
     finally:
         _restore_sharing(saved)
+
+
+@pytest.fixture
+def admins_see(monkeypatch):
+    """STUDIO_ADMINS_SEE_RECORDINGS on for one test (read from the environment on every call)."""
+    monkeypatch.setenv('STUDIO_ADMINS_SEE_RECORDINGS', 'true')
+    yield
 
 
 @pytest.fixture

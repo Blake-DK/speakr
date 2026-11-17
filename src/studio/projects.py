@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from src.database import db
-from src.studio import access, sharing
+from src.studio import access, admin_access, sharing
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,8 @@ def create(owner, data):
     sharing.make_folder(project,
                         hotwords=_text(data, 'hotwords', MAX_HINT_LENGTH),
                         initial_prompt=_text(data, 'initial_prompt', MAX_HINT_LENGTH))
+    # With STUDIO_ADMINS_SEE_RECORDINGS on, its group and the admins' memberships now.
+    admin_access.project_changed(project)
     db.session.commit()
     return project
 
@@ -169,6 +171,7 @@ def summary(project, user, opened_at=None):
     """A project as the Projects list shows it."""
     from src.studio.models import StudioMaterial
     role = access.role_of(project, user)
+    visible, hidden = split_recordings(project, user)
     return {
         'id': project.id,
         'name': project.name,
@@ -178,7 +181,10 @@ def summary(project, user, opened_at=None):
         'role': role,
         'shared': bool(access.member_ids(project)),
         'material_count': StudioMaterial.query.filter_by(project_id=project.id).count(),
-        'recording_count': len(visible_recordings(project, user)),
+        'recording_count': len(visible),
+        # Recordings in the project that the viewer cannot open, and whose they
+        # are, so the card never says "0 recordings" for a project that has some.
+        'hidden_recordings': hidden_summary(hidden),
         'created_at': _iso(project.created_at),
         'opened_at': _iso(opened_at),
     }
@@ -205,6 +211,8 @@ def detail(project, role, user):
         'folder_missing': folder is None,
         'people': sharing.people(project),
         'sharing_enabled': access.sharing_enabled(),
+        # STUDIO_ADMINS_SEE_RECORDINGS: the site's administrators can open its recordings too.
+        'admins_see_recordings': admin_access.active(),
         'user_search_scope': user_lookup.search_scope(),
         'can': access.capabilities(project, role, user),
         'created_at': project.created_at.isoformat() + 'Z' if project.created_at else None,
@@ -214,21 +222,37 @@ def detail(project, role, user):
 
 # --- recordings -------------------------------------------------------------
 
-def visible_recordings(project, user):
-    """The recordings in the project's folder that Speakr lets the user open, newest first."""
+def split_recordings(project, user):
+    """(the recordings in the project's folder that Speakr lets the user open, the others), newest first."""
     from src.app import has_recording_access
     from src.models import Recording
     folder = access.project_folder(project)
     if folder is None:
-        return []
+        return [], []
     rows = Recording.query.filter(Recording.folder_id == folder.id).order_by(
         Recording.created_at.desc(), Recording.id.desc()).all()
-    return [r for r in rows if has_recording_access(r, user)]
+    visible, hidden = [], []
+    for row in rows:
+        (visible if has_recording_access(row, user) else hidden).append(row)
+    return visible, hidden
 
 
-def recording_list(project, user):
+def visible_recordings(project, user):
+    """The recordings in the project's folder that Speakr lets the user open, newest first."""
+    return split_recordings(project, user)[0]
+
+
+def hidden_summary(hidden):
+    """{count, owners}: how many recordings the viewer cannot open, and the usernames of their owners."""
     from src.models import User
-    rows = visible_recordings(project, user)
+    owner_ids = {r.user_id for r in hidden if r.user_id}
+    names = sorted(u.username for u in User.query.filter(User.id.in_(owner_ids)).all()) if owner_ids else []
+    return {'count': len(hidden), 'owners': names}
+
+
+def recording_list(project, user, rows=None):
+    from src.models import User
+    rows = visible_recordings(project, user) if rows is None else rows
     owners = {u.id: u.username for u in User.query.filter(User.id.in_({r.user_id for r in rows if r.user_id})).all()}
     return [{
         'id': r.id,

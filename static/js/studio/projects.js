@@ -71,9 +71,16 @@
                 }
 
                 function counts(project) {
-                    return st('studio.projects.counts', {
+                    // Recordings the viewer cannot open are counted and said so,
+                    // never left out (a project with some must not read "0 recordings").
+                    const hidden = project.hidden_recordings || { count: 0, owners: [] };
+                    const params = {
                         recordings: project.recording_count, materials: project.material_count,
-                    });
+                        count: hidden.count, owners: (hidden.owners || []).join(', '),
+                    };
+                    if (!hidden.count) return st('studio.projects.counts', params);
+                    if (!project.recording_count) return st('studio.projects.countsHiddenAll', params);
+                    return st('studio.projects.countsHiddenSome', params);
                 }
 
                 const hasProjects = computed(() => projects.value.length > 0);

@@ -36,6 +36,8 @@
       "private": "Private",
       "sharedWithYou": "Shared with you",
       "counts": "{{recordings}} recordings · {{materials}} materials",
+      "countsHiddenAll": "{{count}} recordings, owned by {{owners}}; you cannot open them · {{materials}} materials",
+      "countsHiddenSome": "{{recordings}} recordings, and {{count}} owned by {{owners}} that you cannot open · {{materials}} materials",
       "sourceCode": "Source code",
       "sourceCodeHint": "This site runs a modified version of Speakr. Its source code is published under the GNU AGPL v3.",
       "allRecordings": "All recordings"
@@ -54,7 +56,8 @@
         "member": "Shared with you",
         "admin": "Seen as an administrator"
       },
-      "adminNote": "You see this project because you are an administrator. Its recordings show only where Speakr lets you open them.",
+      "adminNote": "You see this project because you are an administrator. Its recordings belong to their owners; you can open only the ones shared with you.",
+      "adminNoteRecordings": "You see this project because you are an administrator. You can open its recordings but not change them, and add recordings of your own.",
       "folderMissing": "This project's folder was deleted in the recordings list. Its recordings were kept, outside any folder. A new folder is made when a recording is added here or the project is shared.",
       "details": {
         "name": "Name",
@@ -80,6 +83,8 @@
         "addHint": "Audio or video. It is transcribed with the project's hints, in the recordings queue.",
         "dropHere": "Drop audio or video files here",
         "empty": "No recordings in this project yet.",
+        "hiddenAll": "{{count}} recordings in this project belong to {{owners}}. You cannot open them.",
+        "hiddenSome": "{{count}} more recordings in this project belong to {{owners}}. You cannot open them.",
         "folderHint": "Recordings are kept in the folder “{{folder}}” of the recordings list.",
         "uploading": "Uploading {{name}}… {{percent}}",
         "processing": "{{name}}: received, checking the file…",
@@ -129,6 +134,7 @@
       "people": {
         "intro": "People on this list can open the project, its materials and voice references, and every recording in its folder, and can add their own. Only you change the list.",
         "introMember": "The owner decides who is on this list.",
+        "adminsSee": "This site's administrators can also open this project and its recordings.",
         "sharingOff": "Sharing is switched off on this site, so the project cannot be shared. An administrator can switch on internal sharing.",
         "owner": "Owner",
         "member": "Member",
@@ -142,7 +148,7 @@
         "saved": "The People list was saved.",
         "removeConfirmTitle": "Remove from the project?",
         "removeConfirm": "Their recordings in this project leave it, and they no longer see the project or its recordings.",
-        "private": "Only you see this project."
+        "private": "Nobody else is on the list. The site's administrators see the project and its materials, but not its recordings."
       }
     },
     "switcher": {

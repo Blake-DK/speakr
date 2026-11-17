@@ -24,6 +24,10 @@ How a project maps onto Speakr:
   folder made ends. Shares someone made by hand in Speakr stay.
 - Deleting a project deletes its materials, voice references, its group and
   its folder. The recordings stay with their owners, outside any folder.
+- With STUDIO_ADMINS_SEE_RECORDINGS on, every project keeps its group and
+  group folder even with an empty People list, and the site admins are
+  members of it (src/studio/admin_access.py); each change here ends with
+  ``admin_access.project_changed``.
 
 Everything goes through upstream's models and share functions
 (``apply_folder_shares``, ``sync_source_shares``, ``drop_stale_auto_shares``)
@@ -100,10 +104,12 @@ def ensure_folder(project):
     folder = access.project_folder(project)
     if folder is not None:
         return folder
+    from src.studio import admin_access
     folder = make_folder(project)
     group = access.project_group(project)
     if group is not None and access.member_ids(project):
         _link_folder(project, folder, group)
+    admin_access.project_changed(project)
     return folder
 
 
@@ -146,8 +152,9 @@ def _ensure_group(project):
     if group is None:
         group = Group(
             name=_free_group_name(project),
-            description='Made by the Projects page to share a project. Change its people on the '
-                        "project's People list; the studio keeps them in step with it.",
+            description="Made by the Projects page for one project: its owner, the people on its People "
+                        "list and, where the site lets them, the site's administrators. Change its people "
+                        "on the project's People list; the studio keeps the group in step with it.",
             created_by=project.owner_id,
         )
         db.session.add(group)
@@ -323,6 +330,7 @@ def set_people(project, wanted):
 
     Returns (added ids, removed ids).
     """
+    from src.studio import admin_access
     from src.studio.models import StudioProjectMember
     if not access.sharing_enabled():
         raise SharingError('studio.errors.sharingOff', 403)
@@ -337,7 +345,12 @@ def set_people(project, wanted):
             folder = access.project_folder(project)
             for user_id in sorted(current):
                 _remove_person(project, folder, project.group_id, user_id)
-            _end_group(project, folder)
+            if admin_access.active():
+                # The group stays, for the site's administrators.
+                StudioProjectMember.query.filter_by(project_id=project.id).delete()
+                admin_access.project_changed(project)
+            else:
+                _end_group(project, folder)
         return set(), removed
     folder = ensure_folder(project)
     group = _ensure_group(project)
@@ -350,6 +363,7 @@ def set_people(project, wanted):
         # Also re-adds someone whose group membership was ended in Speakr's
         # screens while the owner kept them on the list.
         _add_person(project, folder, group, user_id)
+    admin_access.project_changed(project)
     return added, removed
 
 
@@ -359,8 +373,9 @@ def delete_project(project):
     """Delete the project and what is only the project's. Recordings stay with their owners. No commit."""
     from src.models import InternalShare, Recording
     from src.services.auto_shares import drop_stale_auto_shares
-    from src.studio import materials
+    from src.studio import admin_access, materials
     from src.studio.models import StudioMaterial, StudioProjectVisit, StudioVoiceReference
+    admin_access.forget_project(project)
     folder = access.project_folder(project)
     for user_id in sorted(access.member_ids(project)):
         _remove_person(project, folder, project.group_id, user_id)

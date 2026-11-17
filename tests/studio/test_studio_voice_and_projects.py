@@ -149,7 +149,8 @@ def test_no_studio_column_is_on_an_upstream_table():
         assert not [c.name for c in model.__table__.columns if c.name.startswith('studio')]
     studio_tables = {t for t in db.metadata.tables if t.startswith('studio_')}
     assert studio_tables == {'studio_project', 'studio_project_member', 'studio_material',
-                             'studio_voice_reference', 'studio_project_visit', 'studio_schema_step'}
+                             'studio_voice_reference', 'studio_project_visit', 'studio_schema_step',
+                             'studio_admin_grant', 'studio_admin_project'}
     with app.app_context():
         on_disk = set(inspect(db.engine).get_table_names())
     assert studio_tables <= on_disk
