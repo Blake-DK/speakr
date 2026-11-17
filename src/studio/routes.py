@@ -401,5 +401,7 @@ def delete_voice(reference_id):
     return jsonify({'success': True})
 
 
-# The chats (src/studio/chat_routes.py) are routes of this blueprint too.
+# The chats (src/studio/chat_routes.py) and the documents and generated images
+# (src/studio/document_routes.py) are routes of this blueprint too.
 from src.studio import chat_routes as _chat_routes  # noqa: E402,F401
+from src.studio import document_routes as _document_routes  # noqa: E402,F401

@@ -17,10 +17,11 @@ of a deleted account) could no longer be found.
   are emptied;
 - a recording: voice references made from it go;
 - an account: the projects it owned go, with their materials (rows and
-  files), voice references and chats; its places on other projects' People
-  lists go, and so does its record of the projects it opened. The chats it
-  made in other people's projects, and the messages it wrote, stay, with no
-  name on them.
+  files), voice references, chats and documents; its places on other
+  projects' People lists go, and so does its record of the projects it
+  opened. The chats it made in other people's projects, the messages it
+  wrote and the documents it made or changed there stay, with no name on
+  them.
 
 The administrators' rule (src/studio/admin_access.py) keeps two tables: the
 group memberships it made go with their project, group or account, and its
@@ -55,6 +56,11 @@ def _chat_tables():
     return StudioChat.__table__, StudioMessage.__table__
 
 
+def _documents():
+    from src.studio.models import StudioDocument
+    return StudioDocument.__table__
+
+
 def _drop_projects(connection, project_ids):
     """Delete these projects and their rows; returns the storage locators of their materials."""
     projects, members, materials, voices = _tables()
@@ -66,7 +72,7 @@ def _drop_projects(connection, project_ids):
     chat_ids = select(chats.c.id).where(chats.c.project_id.in_(project_ids))
     connection.execute(messages.delete().where(messages.c.chat_id.in_(chat_ids)))
     connection.execute(chats.delete().where(chats.c.project_id.in_(project_ids)))
-    for table in (materials, voices, members, _visits()) + _admin_tables():
+    for table in (materials, voices, members, _visits(), _documents()) + _admin_tables():
         connection.execute(table.delete().where(table.c.project_id.in_(project_ids)))
     connection.execute(projects.delete().where(projects.c.id.in_(project_ids)))
     return locators
@@ -106,6 +112,9 @@ def user_deleted(mapper, connection, target):
     chats, messages = _chat_tables()
     connection.execute(chats.update().where(chats.c.created_by == target.id).values(created_by=None))
     connection.execute(messages.update().where(messages.c.sender_id == target.id).values(sender_id=None))
+    docs = _documents()
+    connection.execute(docs.update().where(docs.c.created_by == target.id).values(created_by=None))
+    connection.execute(docs.update().where(docs.c.updated_by == target.id).values(updated_by=None))
     owned = [row[0] for row in connection.execute(select(projects.c.id).where(projects.c.owner_id == target.id))]
     locators = _drop_projects(connection, owned)
     if locators:
@@ -116,6 +125,10 @@ def user_deleted(mapper, connection, target):
                 storage.delete(locator, missing_ok=True)
             except (OSError, ValueError, RuntimeError):
                 logger.warning("A studio material file of a deleted account could not be removed")
+    if owned:
+        from src.studio.materials import prune_project_folder
+        for project_id in owned:
+            prune_project_folder(project_id)
 
 
 def register():

@@ -12,7 +12,7 @@ from flask import abort, jsonify, request
 from flask_login import current_user, login_required
 
 from src.database import db
-from src.studio import access, attachments, chats, providers, workflows
+from src.studio import access, attachments, chats, images, providers, workflows
 from src.studio.i18n import studio_message, studio_t
 from src.studio.routes import _error, _not_found, _page, studio_bp
 
@@ -34,9 +34,10 @@ def _chat_or_404(chat_id):
 @studio_bp.route('/api/studio/chat-config', methods=['GET'])
 @login_required
 def chat_config():
-    """The providers (no keys, only whether one is set) and the workflows (no prompt text)."""
+    """The providers (no keys, only whether one is set), the workflows (no prompt text) and image generation."""
     return jsonify({
         'providers': providers.describe(),
+        'images': images.describe(),
         'workflows': workflows.public_list(),
         'limits': {'max_attach_bytes': attachments.MAX_ATTACH_BYTES,
                    'max_attachments': attachments.MAX_ATTACHMENTS_PER_MESSAGE,
@@ -182,8 +183,14 @@ def chat_settings_page():
 @login_required
 def get_chat_settings():
     _admin_only()
-    return jsonify({'providers': providers.describe(), 'key_env': providers.KEY_ENV,
-                    'defaults': {name: providers.DEFAULT_MODELS[name] for name in providers.PROVIDERS}})
+    return jsonify(_settings_view())
+
+
+def _settings_view():
+    return {'providers': providers.describe(), 'key_env': providers.KEY_ENV,
+            'defaults': {name: providers.DEFAULT_MODELS[name] for name in providers.PROVIDERS},
+            'images': images.describe(), 'image_model_default': images.DEFAULT_MODEL,
+            'image_model_setting': providers.setting(images.MODEL_SETTING) or ''}
 
 
 @studio_bp.route('/api/studio/settings', methods=['PUT'])
@@ -207,9 +214,18 @@ def put_chat_settings():
         enabled_key = f'{name}_enabled'
         if enabled_key in data:
             providers.set_setting(enabled_key, '1' if data[enabled_key] else '0')
+    if images.MODEL_SETTING in data:
+        value = data[images.MODEL_SETTING]
+        value = value.strip() if isinstance(value, str) else ''
+        if not value:
+            providers.clear_setting(images.MODEL_SETTING)
+        elif not MODEL_ID_RE.match(value):
+            db.session.rollback()
+            return _error('studio.settings.errors.imageModel', 400)
+        else:
+            providers.set_setting(images.MODEL_SETTING, value)
     db.session.commit()
-    return jsonify({'providers': providers.describe(), 'key_env': providers.KEY_ENV,
-                    'defaults': {name: providers.DEFAULT_MODELS[name] for name in providers.PROVIDERS}})
+    return jsonify(_settings_view())
 
 
 @studio_bp.route('/api/studio/settings/models', methods=['GET'])

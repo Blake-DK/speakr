@@ -151,7 +151,7 @@ def test_no_studio_column_is_on_an_upstream_table():
     assert studio_tables == {'studio_project', 'studio_project_member', 'studio_material',
                              'studio_voice_reference', 'studio_project_visit', 'studio_schema_step',
                              'studio_admin_grant', 'studio_admin_project', 'studio_chat', 'studio_message',
-                             'studio_setting'}
+                             'studio_setting', 'studio_document'}
     with app.app_context():
         on_disk = set(inspect(db.engine).get_table_names())
     assert studio_tables <= on_disk

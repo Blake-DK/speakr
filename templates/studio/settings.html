@@ -106,6 +106,15 @@
                            v-text="testResult[name].message"></p>
                     </section>
 
+                    <section class="p-4 rounded-lg border border-[var(--border-primary)] space-y-2" data-studio-image-model>
+                        <label class="block">
+                            <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.settings.imageModel')"></span>
+                            <input v-model="draft.imageModel" type="text" maxlength="100" class="field w-full" autocomplete="off"
+                                   :placeholder="st('studio.settings.modelDefault', { model: imageDefault })">
+                        </label>
+                        <p class="text-xs text-[var(--text-muted)]" v-text="st('studio.settings.imageModelHint')"></p>
+                    </section>
+
                     <p v-if="saved" class="notice notice--success" role="status" v-text="st('studio.settings.saved')"></p>
                     <p v-if="saveError" class="notice notice--danger" role="alert" v-text="saveError"></p>
                     <button type="button" class="btn btn--primary" :disabled="saving" data-studio-settings-save @click="save"

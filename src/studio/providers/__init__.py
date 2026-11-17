@@ -65,6 +65,11 @@ def _setting(key):
     return row.value if row is not None else None
 
 
+def setting(key):
+    """A studio setting's stored value, or None."""
+    return _setting(key)
+
+
 def model(name):
     """The model the provider uses: the administrator's choice, else the environment, else the default."""
     chosen = _setting(f'{name}_model')

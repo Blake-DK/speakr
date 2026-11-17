@@ -386,8 +386,10 @@ def delete_project(project):
         db.session.delete(material)
     StudioVoiceReference.query.filter_by(project_id=project.id).delete()
     StudioProjectVisit.query.filter_by(project_id=project.id).delete()
-    from src.studio import chats
+    from src.studio import chats, documents
     chats.delete_for_projects([project.id])
+    documents.delete_for_projects([project.id])
+    materials.prune_project_folder(project.id)
     if folder is not None:
         recording_ids = [rid for (rid,) in db.session.query(Recording.id).filter(Recording.folder_id == folder.id)]
         recording_ids += [rid for (rid,) in db.session.query(InternalShare.recording_id).filter(

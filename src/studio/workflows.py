@@ -6,13 +6,14 @@ what the page shows (title, description, form fields) and two prompt pieces:
 with the form's values as the chat's opening message. Attached materials go
 with that message. The prompt texts are the standalone app's, word for word,
 except that the base prompt no longer names that app (and the pitch deck's
-description waits for saved documents; see there).
+description names the studio's own buttons; see there).
 
 ``build_system`` puts the system prompt together: the base text with the
 project's name, logline and notes; the workflow's text; the project's saved
-documents (none yet: a later phase adds them); and the voice references
-within a 12,000-character budget, each only when the person sending may open
-it (src/studio/chats.py collects them).
+documents within a 16,000-character budget, the most recently changed first
+(src/studio/documents.py); and the voice references within a 12,000-character
+budget, each only when the person sending may open it (src/studio/chats.py
+collects them).
 """
 
 BASE_SYSTEM = """You are a marketing and pitch assistant for independent filmmakers.
@@ -262,9 +263,9 @@ WORKFLOWS = {
     "pitchdeck": {
         "title": "Pitch deck",
         # The standalone app's description went on: "Save the result with 💾, then
-        # download it as a real .pptx from Documents." Saved documents and the
-        # PowerPoint export come in a later phase, and the hint with them.
-        "description": "A slide-by-slide investor pitch deck.",
+        # download it as a real .pptx from Documents." Here the button has a name.
+        "description": "A slide-by-slide investor pitch deck. Save the result with “Save as document”, "
+                       "then download it as PowerPoint slides from the Documents tab.",
         "web_search": False,
         "fields": [
             {"id": "purpose", "label": "Who is the deck for?", "placeholder": "e.g. investors for a £250k raise, distribution partners, festival funds"},

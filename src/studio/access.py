@@ -26,8 +26,9 @@ project's Speakr group and Speakr shares the folder's recordings with them,
 read-only (src/studio/admin_access.py). Their role here stays ADMIN.
 
 What each role may do (``capabilities``): owners do everything; people on the
-People list and site admins read the project, edit its logline and notes, and
-add materials and voice references; only the owner renames, shares and
+People list and site admins read the project, edit its logline and notes,
+add materials and voice references, and write and change its saved
+documents; only the owner renames, shares and
 deletes the project and changes its transcription hints (they are settings of
 the Speakr folder, which Speakr lets only the folder's owner change); a site
 admin may also delete a project whose owner's account no longer exists.
@@ -152,6 +153,7 @@ def capabilities(project, role, user):
         'add_recording': can_use_folder,
         'add_material': role in (OWNER, MEMBER, ADMIN),
         'add_voice': role in (OWNER, MEMBER, ADMIN),
+        'add_document': role in (OWNER, MEMBER, ADMIN),
     }
 
 

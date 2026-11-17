@@ -1,8 +1,9 @@
 /**
  * The studio's chat settings (templates/studio/settings.html), for
  * administrators: each provider's model, whether it is switched on, its
- * live model list and a connection test. API keys are set on the server
- * only; the page learns no more than whether one is set.
+ * live model list and a connection test, and the model that makes images
+ * on the Materials tab. API keys are set on the server only; the page
+ * learns no more than whether one is set.
  */
 (function () {
     'use strict';
@@ -23,7 +24,8 @@
                 const info = reactive({});
                 const keyEnv = reactive({});
                 const defaults = reactive({});
-                const draft = reactive({ claude: { model: '', enabled: true }, openai: { model: '', enabled: true } });
+                const draft = reactive({ claude: { model: '', enabled: true }, openai: { model: '', enabled: true }, imageModel: '' });
+                const imageDefault = ref('');
                 const models = reactive({});
                 const modelErrors = reactive({});
                 const loadingModels = ref(false);
@@ -42,6 +44,8 @@
                         draft[name].model = p.model && p.model !== defaults[name] ? p.model : '';
                         draft[name].enabled = p.enabled !== false;
                     }
+                    draft.imageModel = data.image_model_setting || '';
+                    imageDefault.value = data.image_model_default || '';
                 }
 
                 async function load() {
@@ -80,6 +84,7 @@
                         body[`${name}_model`] = draft[name].model;
                         body[`${name}_enabled`] = draft[name].enabled;
                     }
+                    body.openai_image_model = draft.imageModel;
                     const res = await api.request('PUT', '/api/studio/settings', body);
                     saving.value = false;
                     if (res.ok && res.data) {
@@ -92,7 +97,7 @@
 
                 onMounted(load);
                 return {
-                    st, names, loading, loadError, info, keyEnv, defaults, draft, models, modelErrors, loadingModels,
+                    st, names, loading, loadError, info, keyEnv, defaults, draft, imageDefault, models, modelErrors, loadingModels,
                     testing, testResult, saving, saved, saveError, loadModels, test, save,
                 };
             },

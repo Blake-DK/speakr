@@ -11,12 +11,21 @@
 ARG BASE_IMAGE=speakr-base:lite
 FROM ${BASE_IMAGE}
 
-# The add-on's own Python packages (requirements-studio.txt: python-pptx, anthropic and
-# what it needs beyond upstream's lock), pinned and hash-checked like upstream's.
+# The system libraries WeasyPrint loads for the documents' PDF download: pango
+# (with harfbuzz and fontconfig) and one font family (DejaVu), so a PDF never
+# needs a font from anywhere else.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 \
+       fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
+# The add-on's own Python packages (requirements-studio.txt: python-pptx, anthropic,
+# weasyprint and what they need beyond upstream's lock), pinned and hash-checked like
+# upstream's.
 COPY requirements-studio.txt /tmp/requirements-studio.txt
 RUN pip install --no-cache-dir --require-hashes --no-deps -r /tmp/requirements-studio.txt \
     && rm /tmp/requirements-studio.txt \
-    && python -c "import pptx, anthropic"
+    && python -c "import pptx, anthropic, weasyprint; weasyprint.HTML(string='<p>ok</p>').write_pdf()"
 
 # whisper/ is a separate service with its own image (whisper/Dockerfile.arc);
 # upstream's "COPY . ." picks it up, but the app does not use it.

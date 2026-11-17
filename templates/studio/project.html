@@ -304,12 +304,21 @@
                              data-studio-material-drop
                              @dragover.prevent="materialDrag = true" @dragleave.prevent="materialDrag = false"
                              @drop.prevent="onMaterialDrop">
-                            <button type="button" class="btn btn--primary" :disabled="materialUploading > 0" @click="pickMaterials">
-                                <i class="fas fa-paperclip" aria-hidden="true"></i>
-                                <span v-text="st('studio.project.materials.add')"></span>
-                            </button>
+                            <div class="flex flex-wrap justify-center gap-2">
+                                <button type="button" class="btn btn--primary" :disabled="materialUploading > 0" @click="pickMaterials">
+                                    <i class="fas fa-paperclip" aria-hidden="true"></i>
+                                    <span v-text="st('studio.project.materials.add')"></span>
+                                </button>
+                                <button type="button" class="btn" data-studio-generate-image :disabled="!imageInfo || !!imageUnavailable"
+                                        :title="imageUnavailable || st('studio.images.intro')" @click="openImage">
+                                    <i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i>
+                                    <span v-text="st('studio.project.materials.generate')"></span>
+                                </button>
+                            </div>
                             <p class="mt-2 text-xs text-[var(--text-muted)] hidden sm:block" v-text="st('studio.project.materials.dropHere')"></p>
                             <p class="mt-1 text-xs text-[var(--text-muted)]" v-text="st('studio.project.materials.accepted')"></p>
+                            <p v-if="imageUnavailable" class="mt-1 text-xs text-[var(--text-muted)]" data-studio-image-unavailable
+                               v-text="imageUnavailable"></p>
                             <input ref="materialInput" type="file" class="hidden" multiple
                                    accept=".pdf,.pptx,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/png,image/jpeg,image/webp,image/gif"
                                    @change="onMaterialFiles">
@@ -349,6 +358,47 @@
                                      v-text="openText['m' + material.id]"></pre>
                             </li>
                         </ul>
+
+                        <!-- Generate an image -->
+                        <div v-if="imageForm.open" class="modal-overlay" @click.self="imageForm.busy || (imageForm.open = false)" data-studio-image-form>
+                            <div class="modal-panel modal-panel--md" role="dialog" aria-modal="true" :aria-label="st('studio.images.title')">
+                                <div class="modal-header">
+                                    <h3 class="modal-title" v-text="st('studio.images.title')"></h3>
+                                    <button type="button" class="modal-close" :disabled="imageForm.busy" @click="imageForm.open = false"
+                                            :aria-label="st('studio.common.cancel')">
+                                        <i class="fas fa-xmark" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <form class="modal-body space-y-3" @submit.prevent="generateImage">
+                                    <p class="text-sm text-[var(--text-secondary)]" v-text="st('studio.images.intro')"></p>
+                                    <label class="block">
+                                        <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.images.promptLabel')"></span>
+                                        <textarea v-model="imageForm.prompt" rows="4" maxlength="4000" class="field w-full"
+                                                  :placeholder="st('studio.images.promptPlaceholder')"></textarea>
+                                    </label>
+                                    <label class="block">
+                                        <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.images.shape')"></span>
+                                        <select v-model="imageForm.size" class="field w-full">
+                                            <option v-for="size in imageSizes" :key="size" :value="size" v-text="st('studio.images.shapes.' + size)"></option>
+                                        </select>
+                                    </label>
+                                    <label class="block">
+                                        <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.images.quality')"></span>
+                                        <select v-model="imageForm.quality" class="field w-full">
+                                            <option v-for="q in imageQualities" :key="q" :value="q" v-text="st('studio.images.qualities.' + q)"></option>
+                                        </select>
+                                    </label>
+                                    <p v-if="imageUnavailable" class="notice notice--warn" v-text="imageUnavailable"></p>
+                                    <p v-if="imageForm.error" class="text-sm text-[var(--text-danger)]" role="alert" v-text="imageForm.error"></p>
+                                    <div class="modal-footer px-0 pb-0">
+                                        <button type="button" class="btn btn--ghost" :disabled="imageForm.busy" @click="imageForm.open = false"
+                                                v-text="st('studio.common.cancel')"></button>
+                                        <button type="submit" class="btn btn--primary" :disabled="imageForm.busy || !imageForm.prompt.trim() || !!imageUnavailable"
+                                                v-text="imageForm.busy ? st('studio.images.generating') : st('studio.images.generate')"></button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
                     </section>
 
                     <!-- Voice -->
@@ -519,6 +569,10 @@
                                         <div class="mt-2 flex flex-wrap gap-2">
                                             <button type="button" class="btn btn--sm btn--ghost" @click="chat.copyText(m.content, m.id)"
                                                     v-text="chat.copiedId === m.id ? st('studio.chat.copied') : st('studio.chat.copy')"></button>
+                                            <button v-if="chat.canSaveAsDocument(m)" type="button" class="btn btn--sm btn--ghost" data-studio-save-document
+                                                    :title="st('studio.chat.saveAsDocumentHint')" @click="chat.saveAsDocument(m)">
+                                                <i class="fas fa-file-arrow-down" aria-hidden="true"></i> <span v-text="st('studio.chat.saveAsDocument')"></span>
+                                            </button>
                                             <button v-if="chat.canRegenerate(index)" type="button" class="btn btn--sm btn--ghost"
                                                     :title="st('studio.chat.regenerateHint')" @click="chat.regenerate">
                                                 <i class="fas fa-rotate" aria-hidden="true"></i> <span v-text="st('studio.chat.regenerate')"></span>
@@ -543,6 +597,7 @@
                             </div>
 
                             <p v-if="chat.error" class="notice notice--danger mt-3" role="alert" v-text="chat.error"></p>
+                            <p v-if="chat.notice" class="notice notice--success mt-3" role="status" data-studio-chat-notice v-text="chat.notice"></p>
                             <p v-if="!chat.anyProvider() && chat.ready" class="notice notice--warn mt-3" v-text="st('studio.chat.noProvider')"></p>
                             <p v-if="chat.uploading" class="mt-2 text-sm text-[var(--text-secondary)]" aria-live="polite"
                                v-text="st('studio.chat.uploading', { count: chat.uploading })"></p>
@@ -556,10 +611,12 @@
                                 <template v-else>
                                     <p class="text-xs text-[var(--text-muted)] mb-2" v-text="st('studio.chat.contextHint')"></p>
                                     <div class="flex flex-wrap gap-2">
-                                        <button v-for="item in chat.contextItems()" :key="item.id" type="button" class="chip"
+                                        <button v-for="item in chat.contextItems()" :key="item.key" type="button" class="chip"
                                                 :class="item.excluded || item.hidden ? 'opacity-60 line-through' : ''" :disabled="item.hidden"
+                                                :data-studio-context-item="item.type"
+                                                :title="item.type === 'document' ? st('studio.chat.contextDocument') : st('studio.chat.contextVoice')"
                                                 :aria-pressed="item.excluded || item.hidden ? 'false' : 'true'" @click="chat.toggleContext(item)">
-                                            <i class="fas fa-comment-dots mr-1" aria-hidden="true"></i>
+                                            <i :class="item.type === 'document' ? 'fas fa-file-lines' : 'fas fa-comment-dots'" class="mr-1" aria-hidden="true"></i>
                                             <span v-text="item.title"></span>
                                             <span class="text-xs ml-1" v-text="'(' + (item.hidden ? st('studio.chat.contextHidden') : (item.excluded ? st('studio.chat.excluded') : st('studio.chat.included'))) + ')'"></span>
                                         </button>
@@ -701,6 +758,83 @@
                         </div>
                     </section>
 
+                    <!-- Documents (static/js/studio/documents.js) -->
+                    <section v-if="tab === 'documents'" data-studio-section="documents">
+                        <p class="mb-4 text-sm text-[var(--text-secondary)]" v-text="st('studio.project.documents.intro')"></p>
+                        <div v-if="can.add_document" class="mb-4">
+                            <button type="button" class="btn btn--primary" data-studio-new-document @click="docs.openNew">
+                                <i class="fas fa-plus" aria-hidden="true"></i>
+                                <span v-text="st('studio.project.documents.new')"></span>
+                            </button>
+                        </div>
+                        <p v-if="docs.flash" class="notice notice--success mb-4" role="status" v-text="docs.flash"></p>
+                        <p v-if="docs.error" class="notice notice--danger mb-4" role="alert" v-text="docs.error"></p>
+                        <p v-if="!docs.items.length" class="py-6 text-center text-[var(--text-muted)]" v-text="st('studio.project.documents.empty')"></p>
+                        <ul v-else class="divide-y divide-[var(--border-primary)]" data-studio-document-list>
+                            <li v-for="item in docs.items" :key="item.id" class="py-3 flex flex-wrap items-start gap-x-3 gap-y-2">
+                                <i class="fas fa-file-lines text-xl mt-1 text-[var(--text-muted)] shrink-0" aria-hidden="true"></i>
+                                <div class="min-w-0 flex-1">
+                                    <button type="button" class="font-medium text-left text-[var(--text-accent)] hover:underline break-words"
+                                            @click="docs.openDocument(item)" v-text="item.title"></button>
+                                    <p class="text-xs text-[var(--text-muted)]" v-text="docs.meta(item)"></p>
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    <button type="button" class="btn btn--sm" @click="docs.openDocument(item)" v-text="st('studio.common.open')"></button>
+                                    <button v-if="item.can_delete" type="button" class="btn btn--sm btn--ghost" @click="docs.remove(item)"
+                                            v-text="st('studio.common.delete')"></button>
+                                </div>
+                            </li>
+                        </ul>
+
+                        <!-- The editor -->
+                        <div v-if="docs.editor" class="modal-overlay" @click.self="docs.close" data-studio-document-editor>
+                            <div class="modal-panel modal-panel--lg" role="dialog" aria-modal="true"
+                                 :aria-label="docs.editor.id ? st('studio.project.documents.editTitle') : st('studio.project.documents.newTitle')">
+                                <div class="modal-header">
+                                    <h3 class="modal-title" v-text="docs.editor.id ? st('studio.project.documents.editTitle') : st('studio.project.documents.newTitle')"></h3>
+                                    <button type="button" class="modal-close" @click="docs.close" :aria-label="st('studio.project.documents.close')">
+                                        <i class="fas fa-xmark" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <form class="modal-body space-y-3" @submit.prevent="docs.save">
+                                    <label class="block">
+                                        <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.project.documents.titleLabel')"></span>
+                                        <input v-model="docs.editor.title" type="text" maxlength="200" class="field w-full" required
+                                               :placeholder="st('studio.project.documents.titlePlaceholder')">
+                                    </label>
+                                    <label class="block">
+                                        <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.project.documents.bodyLabel')"></span>
+                                        <textarea v-model="docs.editor.body" rows="16" maxlength="300000" class="field w-full font-mono text-sm"
+                                                  :placeholder="st('studio.project.documents.bodyPlaceholder')"></textarea>
+                                    </label>
+                                    <div v-if="docs.editor.id" class="space-y-1">
+                                        <p class="text-sm font-medium text-[var(--text-secondary)]" v-text="st('studio.project.documents.download')"></p>
+                                        <div class="flex flex-wrap gap-2">
+                                            <a v-for="format in docs.formats" :key="format" class="btn btn--sm" :data-studio-download="format"
+                                               :href="docs.downloadUrl(docs.editor.id, format)" download
+                                               v-text="st('studio.project.documents.formats.' + format)"></a>
+                                        </div>
+                                        <p class="text-xs text-[var(--text-muted)]" v-text="st('studio.project.documents.slidesHint')"></p>
+                                        <p v-if="docs.dirty()" class="text-xs text-[var(--text-muted)]" v-text="st('studio.project.documents.unsaved')"></p>
+                                    </div>
+                                    <p v-if="docs.editor.error" class="notice notice--danger" role="alert" v-text="docs.editor.error"></p>
+                                    <div class="modal-footer px-0 pb-0 flex-wrap">
+                                        <button v-if="docs.editor.id && docs.editor.canDelete" type="button" class="btn btn--ghost mr-auto"
+                                                @click="docs.remove()" v-text="st('studio.common.delete')"></button>
+                                        <button type="button" class="btn btn--ghost" @click="docs.copyBody"
+                                                v-text="docs.editor.copied ? st('studio.project.documents.copied') : st('studio.project.documents.copy')"></button>
+                                        <button v-if="docs.editor.conflict" type="button" class="btn" @click="docs.reloadNewer"
+                                                v-text="st('studio.project.documents.reloadNewer')"></button>
+                                        <button type="button" class="btn btn--ghost" @click="docs.close" v-text="st('studio.project.documents.close')"></button>
+                                        <button type="submit" class="btn btn--primary" data-studio-document-save
+                                                :disabled="docs.editor.saving || !docs.editor.title.trim() || (!!docs.editor.id && !docs.dirty())"
+                                                v-text="docs.editor.saving ? st('studio.common.saving') : st('studio.common.save')"></button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </section>
+
                     <!-- People -->
                     <section v-if="tab === 'people'" data-studio-section="people">
                         <p v-if="!project.sharing_enabled" class="notice notice--warn mb-4" v-text="st('studio.project.people.sharingOff')"></p>
@@ -774,6 +908,7 @@
     <script src="{{ url_for('static', filename='vendor/js/purify.min.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='js/markdown-safe.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='js/studio/chat.js', v=app_version) }}"></script>
+    <script src="{{ url_for('static', filename='js/studio/documents.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='js/studio/project.js', v=app_version) }}"></script>
 </body>
 </html>

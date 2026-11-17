@@ -16,7 +16,8 @@ import pytest
 
 from src.app import db
 from src.studio import access
-from src.studio.models import StudioChat, StudioMaterial, StudioMessage, StudioProject, StudioVoiceReference
+from src.studio.models import (StudioChat, StudioDocument, StudioMaterial, StudioMessage, StudioProject,
+                               StudioVoiceReference)
 from tests.studio.support import file_part, sharing_on, world  # noqa: F401
 
 PDF = b'%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'
@@ -40,10 +41,13 @@ def matrix(world, sharing_on):
     db.session.flush()
     message = StudioMessage(chat_id=chat.id, role='user', content='Hello', sender_id=owner)
     db.session.add(message)
+    document = StudioDocument(project_id=project_id, created_by=owner, updated_by=owner, title='Matrix document',
+                              kind='other', body='The tagline.')
+    db.session.add(document)
     db.session.commit()
     return dict(world=world, owner=owner, member=member, admin=admin, outsider=outsider, project=project_id,
                 folder=folder_id, recording=recording_id, material=material_id, voice=voice.get_json()['id'],
-                chat=chat.id, message=message.id)
+                chat=chat.id, message=message.id, document=document.id)
 
 
 def _user(user_id):
@@ -97,11 +101,19 @@ ROUTES = [
     ('post', '/api/studio/chats/{c}/stream', {'message': 'x'}),
     ('post', '/api/studio/chats/{c}/regenerate', {}),
     ('put', '/api/studio/messages/{g}', {'content': 'x'}),
+    ('get', '/api/studio/projects/{p}/documents', None),
+    ('post', '/api/studio/projects/{p}/documents', {'title': 'x', 'body': 'x'}),
+    ('get', '/api/studio/documents/{d}', None),
+    ('put', '/api/studio/documents/{d}', {'title': 'x', 'version': '2026-01-01T00:00:00'}),
+    ('delete', '/api/studio/documents/{d}', None),
+    ('get', '/api/studio/documents/{d}/download', None),
+    ('post', '/api/studio/projects/{p}/images', {'prompt': 'x'}),
 ]
 
 
 def _routes(m):
-    return [(method, path.format(p=m['project'], m=m['material'], v=m['voice'], c=m['chat'], g=m['message']), body)
+    return [(method, path.format(p=m['project'], m=m['material'], v=m['voice'], c=m['chat'], g=m['message'],
+                                 d=m['document']), body)
             for method, path, body in ROUTES]
 
 
@@ -113,7 +125,7 @@ def test_every_studio_route_with_an_id_is_covered_here():
         if rule.endpoint.startswith('studio.') and rule.arguments:
             path = (rule.rule.replace('<int:project_id>', '{p}').replace('<int:material_id>', '{m}')
                     .replace('<int:reference_id>', '{v}').replace('<int:chat_id>', '{c}')
-                    .replace('<int:message_id>', '{g}'))
+                    .replace('<int:message_id>', '{g}').replace('<int:document_id>', '{d}'))
             for method in rule.methods - {'HEAD', 'OPTIONS'}:
                 with_ids.add((method, path))
     assert with_ids == covered
@@ -133,6 +145,10 @@ def test_a_non_member_gets_not_found_on_every_route_and_nothing_changes(matrix):
     assert db.session.get(StudioChat, matrix['chat']).title == 'Matrix chat'
     assert db.session.get(StudioMessage, matrix['message']).content == 'Hello'
     assert StudioChat.query.filter_by(project_id=matrix['project']).count() == 1
+    document = db.session.get(StudioDocument, matrix['document'])
+    assert (document.title, document.body) == ('Matrix document', 'The tagline.')
+    assert StudioDocument.query.filter_by(project_id=matrix['project']).count() == 1
+    assert StudioMaterial.query.filter_by(project_id=matrix['project']).count() == 1
 
 
 def test_an_unknown_id_is_the_same_not_found(matrix):
@@ -156,7 +172,8 @@ def test_a_member_reads_everything_and_may_not_rename_share_or_delete(matrix):
     detail = client.get(f'/api/studio/projects/{p}').get_json()
     assert detail['role'] == 'member'
     assert detail['can'] == {'edit_details': True, 'rename': False, 'edit_hints': False, 'share': False,
-                             'delete': False, 'add_recording': True, 'add_material': True, 'add_voice': True}
+                             'delete': False, 'add_recording': True, 'add_material': True, 'add_voice': True,
+                             'add_document': True}
     assert [r['id'] for r in client.get(f'/api/studio/projects/{p}/recordings').get_json()['items']] == [
         matrix['recording']]
     assert client.get(f"/api/studio/materials/{matrix['material']}/file").status_code == 200
@@ -165,9 +182,13 @@ def test_a_member_reads_everything_and_may_not_rename_share_or_delete(matrix):
     assert client.put(f'/api/studio/projects/{p}', json={'hotwords': 'x'}).status_code == 403
     assert client.put(f'/api/studio/projects/{p}/people', json={'user_ids': []}).status_code == 403
     assert client.delete(f'/api/studio/projects/{p}').status_code == 403
-    # Someone else's material and voice reference: not theirs to delete.
+    # Someone else's material, voice reference and document: not theirs to delete.
     assert client.delete(f"/api/studio/materials/{matrix['material']}").status_code == 403
     assert client.delete(f"/api/studio/voice/{matrix['voice']}").status_code == 403
+    assert client.delete(f"/api/studio/documents/{matrix['document']}").status_code == 403
+    # But theirs to read, download and change, as in the standalone app.
+    assert client.get(f"/api/studio/documents/{matrix['document']}").get_json()['body'] == 'The tagline.'
+    assert client.get(f"/api/studio/documents/{matrix['document']}/download").status_code == 200
 
 
 def test_an_admin_sees_the_project_but_not_other_peoples_recordings(matrix):

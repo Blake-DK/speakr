@@ -7,6 +7,10 @@
  * POST /api/studio/chats/<id>/stream (and /regenerate); Stop aborts that
  * request, and the server keeps what was written so far (src/studio/chats.py).
  *
+ * An answer can be saved as a document of the project (static/js/studio/
+ * documents.js); the project's documents and voice references go with every
+ * answer unless switched off in the context bar.
+ *
  * Model output is Markdown, shown through Speakr's own safe renderer
  * (static/js/markdown-safe.js: marked, then DOMPurify). On top of it, here:
  * images are dropped (an answer never loads anything from elsewhere) and
@@ -61,7 +65,7 @@
         return tpl.innerHTML;
     }
 
-    function useChat({ projectId, api, st, can, voiceItems, onMaterialsChanged, selectTab }) {
+    function useChat({ projectId, api, st, can, voiceItems, documentItems, onMaterialsChanged, onDocumentsChanged, selectTab }) {
         const { reactive, nextTick } = Vue;
 
         const state = reactive({
@@ -82,6 +86,8 @@
             pickerOpen: false,
             contextOpen: false,
             excludedVoice: [],
+            excludedDocs: [],
+            notice: '',              // a line of good news under the chat (an answer saved as a document)
             streaming: false,
             live: null,              // the answer being written: { content, error, thinking }
             error: '',
@@ -198,6 +204,7 @@
         async function openChat(id) {
             state.loadingChat = true;
             state.error = '';
+            state.notice = '';
             const res = await api.request('GET', `/api/studio/chats/${id}`);
             state.loadingChat = false;
             if (!res.ok || !res.data) {
@@ -251,6 +258,7 @@
             state.current = null;
             state.messages = [];
             state.error = '';
+            state.notice = '';
             state.webSearch = false;
             state.view = 'chat';
         }
@@ -276,6 +284,7 @@
         async function stream(url, payload) {
             state.streaming = true;
             state.error = '';
+            state.notice = '';
             state.live = reactive({ content: '', error: '', thinking: true });
             abort = new AbortController();
             scrollToEnd();
@@ -285,7 +294,9 @@
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream', 'X-CSRFToken': api.csrfToken() },
-                    body: JSON.stringify({ ...payload, excluded_voice_ids: state.excludedVoice.slice() }),
+                    body: JSON.stringify({
+                        ...payload, excluded_voice_ids: state.excludedVoice.slice(), excluded_doc_ids: state.excludedDocs.slice(),
+                    }),
                     signal: abort.signal,
                 });
                 if (!res.ok) {
@@ -538,20 +549,34 @@
         }
 
         // --- the context bar ----------------------------------------------
+        // The project's saved documents, then its voice references: each goes with every
+        // answer unless the person switches it off here (for their own next messages).
         function contextItems() {
-            return (voiceItems.value || []).map(item => ({
+            const docs = ((documentItems && documentItems.value) || []).map(item => ({
+                key: `d${item.id}`,
+                type: 'document',
+                id: item.id,
+                title: item.title,
+                hidden: false,
+                excluded: state.excludedDocs.includes(item.id),
+            }));
+            const voice = (voiceItems.value || []).map(item => ({
+                key: `v${item.id}`,
+                type: 'voice',
                 id: item.id,
                 title: item.title,
                 hidden: item.source === 'recording' && !item.recording_title,
                 excluded: state.excludedVoice.includes(item.id),
             }));
+            return docs.concat(voice);
         }
 
         function toggleContext(item) {
             if (item.hidden) return;
-            state.excludedVoice = item.excluded
-                ? state.excludedVoice.filter(id => id !== item.id)
-                : state.excludedVoice.concat([item.id]);
+            const field = item.type === 'document' ? 'excludedDocs' : 'excludedVoice';
+            state[field] = item.excluded
+                ? state[field].filter(id => id !== item.id)
+                : state[field].concat([item.id]);
         }
 
         function contextLabel() {
@@ -614,6 +639,36 @@
             await send(st('studio.chat.discussMessage', { title }), [{ type: 'recording', id: rec.id, name: title }], false);
         }
 
+        // --- saving an answer as a document --------------------------------
+        function canSaveAsDocument(message) {
+            return !!message && message.role === 'assistant' && Number.isInteger(message.id)
+                && !state.streaming && !!(can.value && can.value.add_document);
+        }
+
+        async function saveAsDocument(message) {
+            if (!canSaveAsDocument(message)) return;
+            const title = await window.promptDialog({
+                title: st('studio.chat.saveAsDocument'),
+                message: st('studio.chat.saveAsDocumentIntro'),
+                value: (state.current && state.current.title) || '',
+                placeholder: st('studio.project.documents.titlePlaceholder'),
+                confirmLabel: st('studio.common.save'),
+                cancelLabel: st('studio.common.cancel'),
+            });
+            if (title === null || title === undefined) return;
+            state.error = '';
+            state.notice = '';
+            const res = await api.request('POST', `/api/studio/projects/${projectId}/documents`, {
+                message_id: message.id, title,
+            });
+            if (!res.ok || !res.data) {
+                state.error = errorOf(res);
+                return;
+            }
+            state.notice = st('studio.chat.savedAsDocument', { title: res.data.title });
+            if (onDocumentsChanged) onDocumentsChanged();
+        }
+
         // The HTML of an answer: always through renderMarkdown (Speakr's safe renderer), never the raw text.
         function answerHtml(message) {
             return renderMarkdown(message.content);
@@ -634,7 +689,7 @@
             regenerate, canRegenerate, startEdit, saveEdit, rename, remove, copyText, copyChat,
             providerOptions, anyProvider, setProvider, setScrollBox, titleOf, senderLabel, attachedLine,
             isSelected, toggleAttach, overLimit, sizeLine, openPicker, onDrop, loadAttachables,
-            contextItems, toggleContext, contextLabel, openContext,
+            contextItems, toggleContext, contextLabel, openContext, canSaveAsDocument, saveAsDocument,
             openWorkflow, toggleWorkflowMaterial, startWorkflow, workflowAttachments, discussRecording,
             renderMarkdown, answerHtml, liveHtml, stopTimers,
         });

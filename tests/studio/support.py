@@ -16,8 +16,9 @@ from flask.testing import FlaskClient
 from src.app import app, db
 from src.models import (Folder, Group, GroupMembership, InternalShare, ProcessingJob, Recording, RecordingTag,
                         SharedRecordingState, User)
-from src.studio.models import (StudioAdminGrant, StudioAdminProject, StudioChat, StudioMaterial, StudioMessage,
-                               StudioProject, StudioProjectMember, StudioProjectVisit, StudioVoiceReference)
+from src.studio.models import (StudioAdminGrant, StudioAdminProject, StudioChat, StudioDocument, StudioMaterial,
+                               StudioMessage, StudioProject, StudioProjectMember, StudioProjectVisit,
+                               StudioVoiceReference)
 
 app.config['WTF_CSRF_ENABLED'] = False
 app.config['TESTING'] = True
@@ -99,7 +100,7 @@ class World:
             for material in StudioMaterial.query.filter(StudioMaterial.project_id.in_(project_ids)).all():
                 materials.delete_stored_file(material)
             for model in (StudioMaterial, StudioVoiceReference, StudioProjectMember, StudioProjectVisit,
-                          StudioAdminGrant, StudioAdminProject):
+                          StudioAdminGrant, StudioAdminProject, StudioDocument):
                 model.query.filter(model.project_id.in_(project_ids)).delete(synchronize_session=False)
             StudioProject.query.filter(StudioProject.id.in_(project_ids)).delete(synchronize_session=False)
         recording_ids = [rid for (rid,) in db.session.query(Recording.id).filter(Recording.user_id.in_(ids))]

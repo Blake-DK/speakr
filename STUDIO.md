@@ -42,8 +42,15 @@ site running this code can get its source.
   workflows (marketing scripts, campaign bundle, investor materials,
   planning, script coverage, pitch deck, press kit, competitor comparison
   with web research). See "The chats" below.
+- A project's Documents tab: answers saved from a chat and documents written
+  there, which the model reads as project knowledge in every chat, each
+  downloadable as Markdown, Word, PDF or PowerPoint slides. See "The
+  documents" below.
+- "Generate an image" on the Materials tab: poster concepts and social
+  visuals from OpenAI's image API, stored as materials.
 - `/studio/settings` (site admins only, linked from the Projects page): each
-  provider's model, on or off, its live model list and a connection test.
+  provider's model, on or off, its live model list and a connection test,
+  and the image model.
 - `GET /api/studio/health`: `{"status": "ok"}`, for monitoring.
 - `whisper/`: a Whisper transcription service for Intel Arc (and NVIDIA) GPUs
   with an OpenAI-compatible route, which Speakr reaches through its `openasr`
@@ -119,9 +126,11 @@ site running this code can get its source.
   sending that turn; one they may not open, or that is gone, becomes a
   one-line note.
 - The system prompt: the project's name, logline and notes, the workflow's
-  instructions, and the project's voice references the sender may open (a
-  12,000-character budget), each of which the person can leave out with the
-  context bar. Prompts and workflows are in `src/studio/workflows.py`.
+  instructions, the project's saved documents (a 16,000-character budget,
+  the most recently changed first, older ones by title only) and its voice
+  references the sender may open (a 12,000-character budget), each of which
+  the person can leave out with the context bar. Prompts and workflows are in
+  `src/studio/workflows.py`.
 - With web research on, the pages an answer cites are listed under it
   ("Sources"). The web search tool with dynamic filtering (the one used,
   `web_search_20260209`) gives no citations, so when an answer cites nothing
@@ -131,11 +140,47 @@ site running this code can get its source.
   (`static/js/markdown-safe.js`), with images dropped and links opened in a
   new tab.
 
+### The documents
+
+- A document belongs to its project (`studio_document`): a title and Markdown
+  text, typed in on the Documents tab or saved from a chat answer with "Save
+  as document" (the answer's text without a "(stopped)" mark; the document
+  takes the chat's kind, a plain chat or the workflow it came from).
+  Everyone who sees the project reads its documents, makes new ones and
+  changes any of them; the document's maker or the project's owner deletes
+  it. Documents go with their project; a deleted account's documents in
+  other people's projects stay, with no name on them.
+- Two people can have a document open at once. A save names the version it
+  was opened at (`updated_at`); when the document changed in between, the
+  save is refused (409), the message names who changed it, and the editor
+  keeps the person's text.
+- Downloads (`src/studio/export.py`): Markdown is the text as saved; Word goes
+  through upstream's own converter (`src/services/document.py`); PDF through
+  WeasyPrint (the Markdown as HTML, cleaned with `bleach` to an allow-list,
+  rendered with a URL fetcher that refuses every address, `file:` included;
+  the fonts are the image's own DejaVu); slides through python-pptx, every
+  `#` or `##` heading starting a slide. Images are taken out of the text
+  before every conversion but Markdown, so no converter fetches an address
+  written into a document. WeasyPrint's system libraries (pango, harfbuzz,
+  fontconfig, a font) are installed by `Dockerfile.studio`.
+
+### Generated images
+
+- `POST /api/studio/projects/<id>/images` with a prompt, a shape
+  (`1024x1536` poster, `1024x1024` square, `1536x1024` wide) and a quality
+  (low, medium, high), for everyone who may add materials. The PNG is stored
+  as a material through the same checks as an upload, named after the
+  prompt.
+- The key is `STUDIO_OPENAI_API_KEY`; image generation follows GPT's switch on
+  the settings page. The model is the settings page's image model, else
+  `STUDIO_OPENAI_IMAGE_MODEL`, else `gpt-image-1`. Without a key the button
+  says why and nothing is sent.
+
 ## Where it lives
 
 | path | what |
 |---|---|
-| `src/studio/` | blueprint, access rule, sharing, the administrators' rule, materials, voice references, chats and their providers (`providers/`), workflows, strings, database tables (`studio_*`), schema steps |
+| `src/studio/` | blueprint, access rule, sharing, the administrators' rule, materials, voice references, chats and their providers (`providers/`), workflows, documents and their exports, generated images, strings, database tables (`studio_*`), schema steps |
 | `templates/studio/`, `static/js/studio/` | the add-on's pages |
 | `static/locales-studio/` | the add-on's interface strings |
 | `tests/studio/` | the add-on's tests (run with upstream's suite) |

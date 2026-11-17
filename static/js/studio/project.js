@@ -1,6 +1,7 @@
 /**
  * A project's home page (templates/studio/project.html): details,
- * recordings, materials, voice references, chats (static/js/studio/chat.js)
+ * recordings, materials (and generated images), voice references, chats
+ * (static/js/studio/chat.js), saved documents (static/js/studio/documents.js)
  * and the People list.
  *
  * Recordings are uploaded through Speakr's own upload route (POST /upload)
@@ -310,6 +311,52 @@
                     openText[key] = res.ok && res.data ? (res.data.text || st('studio.project.materials.noText')) : errorOf(res);
                 }
 
+                // --- generated images (POST /api/studio/projects/<id>/images) --------
+                const imageForm = reactive({ open: false, prompt: '', size: '1024x1536', quality: 'medium', busy: false, error: '' });
+                const imageSizes = ['1024x1536', '1024x1024', '1536x1024'];
+                const imageQualities = ['medium', 'high', 'low'];
+
+                // What the server says about image generation (GET /api/studio/chat-config, loaded by the chat).
+                const imageInfo = computed(() => (chat.config && chat.config.images) || null);
+
+                const imageUnavailable = computed(() => {
+                    const info = imageInfo.value;
+                    if (!info || info.available) return '';
+                    return info.has_key
+                        ? st('studio.images.unavailableOff')
+                        : st('studio.images.unavailableNoKey', { env: info.key_env || '' });
+                });
+
+                function openImage() {
+                    if (!imageInfo.value || imageUnavailable.value) return;
+                    const p = project.value;
+                    imageForm.prompt = p.logline
+                        ? st('studio.images.promptStartLogline', { name: p.name, logline: p.logline })
+                        : st('studio.images.promptStart', { name: p.name });
+                    imageForm.size = '1024x1536';
+                    imageForm.quality = 'medium';
+                    imageForm.error = '';
+                    imageForm.open = true;
+                }
+
+                async function generateImage() {
+                    if (imageForm.busy || !imageForm.prompt.trim() || imageUnavailable.value) return;
+                    imageForm.busy = true;
+                    imageForm.error = '';
+                    const res = await api.request('POST', `/api/studio/projects/${projectId}/images`, {
+                        prompt: imageForm.prompt, size: imageForm.size, quality: imageForm.quality,
+                    });
+                    imageForm.busy = false;
+                    if (!res.ok || !res.data) {
+                        imageForm.error = errorOf(res);
+                        return;
+                    }
+                    imageForm.open = false;
+                    say(st('studio.images.added', { name: res.data.name }));
+                    await loadMaterials();
+                    chat.loadAttachables();
+                }
+
                 async function deleteMaterial(material) {
                     const ok = await window.confirmDialog({
                         message: material.name, confirmLabel: st('studio.common.delete'),
@@ -491,11 +538,17 @@
                     }
                 }
 
+                // --- documents -----------------------------------------------
+                // static/js/studio/documents.js
+                const docs = window.studioDocuments.useDocuments({ projectId, api, st });
+                const documentItems = computed(() => docs.items);
+
                 // --- chats ---------------------------------------------------
                 // static/js/studio/chat.js; loaded when the Chats tab is first opened.
                 const chat = window.studioChat.useChat({
-                    projectId, api, st, can, voiceItems,
+                    projectId, api, st, can, voiceItems, documentItems,
                     onMaterialsChanged: loadMaterials,
+                    onDocumentsChanged: () => docs.load(),
                     selectTab: (id) => selectTab(id),
                 });
 
@@ -513,6 +566,7 @@
                     { id: 'materials', icon: 'fas fa-paperclip', count: counts.value.materials },
                     { id: 'voice', icon: 'fas fa-comment-dots', count: counts.value.voice },
                     { id: 'chats', icon: 'fas fa-comments', count: chat.ready ? chat.items.length : null },
+                    { id: 'documents', icon: 'fas fa-file-lines', count: docs.loaded ? docs.items.length : null },
                     { id: 'people', icon: 'fas fa-users', count: counts.value.people },
                 ]);
 
@@ -527,7 +581,7 @@
                     }
                     // The switcher's list loads beside the rest, so it opens at once.
                     switcher.load();
-                    await Promise.all([loadRecordings(), loadMaterials(), loadVoice()]);
+                    await Promise.all([loadRecordings(), loadMaterials(), loadVoice(), docs.load()]);
                     loading.value = false;
                     const wanted = (window.location.hash || '').replace('#', '');
                     if (tabs.value.some(t => t.id === wanted)) tab.value = wanted;
@@ -539,7 +593,9 @@
                 function selectTab(id) {
                     tab.value = id;
                     say('');
+                    docs.flash = '';
                     if (id === 'chats') chat.loadList();
+                    if (id === 'documents') docs.load();
                     try {
                         window.history.replaceState({}, '', `${window.location.pathname}#${id}`);
                     } catch (err) { /* best effort */ }
@@ -553,7 +609,7 @@
 
                 return {
                     st, api, language, tab, tabs, selectTab, loading, loadError, loadAll, project, can, flash, flashError,
-                    switcher, chat,
+                    switcher, chat, docs,
                     editing, saving, draft, startEdit, saveDetails, deleteProject,
                     recordings, hiddenRecordings, hiddenRecordingsLine,
                     uploads, recordingInput, recordingDrag, statusLabel, statusClass, uploadLine,
@@ -561,6 +617,7 @@
                     materials, materialInput, materialDrag, materialUploading, materialRefused, openText,
                     pickMaterials, onMaterialFiles, onMaterialDrop, materialUrl, materialIcon, materialMeta,
                     toggleMaterialText, deleteMaterial,
+                    imageForm, imageSizes, imageQualities, imageInfo, imageUnavailable, openImage, generateImage,
                     voiceItems, voiceRecording, voiceForm, voiceBusy, voiceError, voiceFileInput, finishedRecordings,
                     addVoiceFromRecording, addVoiceText, pickVoiceFile, onVoiceFile, voiceSource, toggleVoiceText, deleteVoice,
                     peopleDraft, peopleQuery, peopleResults, peopleSearching, peopleSaving, peopleError, peopleChanged,

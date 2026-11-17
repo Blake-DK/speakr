@@ -2,8 +2,8 @@
 # Installed by Dockerfile.studio with --require-hashes --no-deps; lxml and
 # typing_extensions, which python-pptx also needs, are in upstream's lock already.
 #
-# python-pptx: reads slide decks uploaded as project materials (and, later,
-# writes the .pptx export); pillow and xlsxwriter are its dependencies.
+# python-pptx: reads slide decks uploaded as project materials and writes the
+# documents' PowerPoint download; pillow and xlsxwriter are its dependencies.
 python-pptx==1.0.2 \
     --hash=sha256:160838e0b8565a8b1f67947675886e9fea18aa5e795db7ae531606d68e785cba \
     --hash=sha256:479a8af0eaf0f0d76b6f00b0887732874ad2e3188230315290cd1f9dd9cc7095
@@ -27,3 +27,35 @@ docstring-parser==0.18.0 \
 opentelemetry-api==1.45.2 \
     --hash=sha256:2cbd737377e710ee740d261c94e93fa0f08e6d037c18f17513cc0a2d94479a34 \
     --hash=sha256:d7b0008e21e5fd61cbe7a7f34ca3b6905a78ab677d9bc395e299359c75cda6b4
+#
+# weasyprint: the documents' PDF download (src/studio/export.py). Its other
+# needs (cffi, pycparser, webencodings, pillow) are in upstream's lock or
+# above; these are not. The system libraries it loads (pango, a font) are
+# installed by Dockerfile.studio. fonttools[woff] brings brotli and zopfli.
+weasyprint==70.0 \
+    --hash=sha256:5043e55e38d2a2af2b2b871e869697b1f65dad5f8b4a3677961d04ceacf9c5fe \
+    --hash=sha256:c263abf0e86c747b12af678b67f85f4abbfb97d18a20503031e7ba94e4b8cf8c
+pydyf==0.13.0 \
+    --hash=sha256:85b28a3af8c35e6fe1415f2b3f1d6851cb3b52f53592c2cda4db9a00a8979677 \
+    --hash=sha256:3c1bd536c7161d9f472b82a8aaa27d3359a9058ec12de15302d92b3690dae7f5
+tinyhtml5==2.1.0 \
+    --hash=sha256:6e11cfff38515834268daf89d5f85bbde0b6dd02e8d9e212d1385c2289b89f0a \
+    --hash=sha256:60a50ec3d938a37e491efa01af895853060943dcebb5627de5b10d188b338a67
+tinycss2==1.5.1 \
+    --hash=sha256:3415ba0f5839c062696996998176c4a3751d18b7edaaeeb658c9ce21ec150661 \
+    --hash=sha256:d339d2b616ba90ccce58da8495a78f46e55d4d25f9fd71dfd526f07e7d53f957
+cssselect2==0.10.1 \
+    --hash=sha256:25cc4494d55985d6a6da359be48da6ce98c28dcbafa2314c383ace3fc32ec868 \
+    --hash=sha256:83b0d820ef589dabaf693289b647c2f5b410f76d285f56deba911ffa75a7b9d1
+pyphen==0.18.1 \
+    --hash=sha256:0aa9051e15928cecadd4c632cea0258ba57215b2a197a39baa46abcdb0f47e84 \
+    --hash=sha256:dbae6fbbe4f01cb206108b43573d857c67107be9d0e38eb1b08d6fa2210634a7
+fonttools==4.68.0 \
+    --hash=sha256:4b9c89b5876f1a74b1341632dfaf4c4c2be565d76c060445df401ebe7a4ceefa \
+    --hash=sha256:73294e233070f71e2b3653b6bd8564af676d57f26d075761fb06d1ab2e4a7a5d
+brotli==1.2.1 \
+    --hash=sha256:6b3c3d5794212a54434b4856f808f7bdf7ad48eacadaadb5b2346fc9a639365a \
+    --hash=sha256:02b2f7b5a83485efe448a44ddf7983def05c3bb1dcf917d4f7154070260e13de
+zopfli==0.4.3 \
+    --hash=sha256:769875152d0625c46707bcca57d4b2233fe653482067acd55fbf6ec525cb9bdc \
+    --hash=sha256:d3a50f91a13cea9bafe025de8fd87a005eb26de02a4f0c193127ddbf23ac8ebe

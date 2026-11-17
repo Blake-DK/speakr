@@ -14,6 +14,9 @@ Carried over from the standalone app the studio replaces, behaviour kept:
   pages; when the answer cites none, the pages the search found, marked so);
 - a provider error is kept as a message of role ``error``: shown after a
   reload, never sent to a provider, removed by regenerate and edit;
+- the project's saved documents (src/studio/documents.py) and its voice
+  references go with every answer, except those the person switched off in
+  the context bar (``excluded_doc_ids``, ``excluded_voice_ids``);
 - Stop, or a lost connection, keeps what was written so far, marked
   "(stopped)".
 
@@ -337,9 +340,11 @@ def voice_examples(project, user, excluded_ids=()):
     return examples
 
 
-def build_system(chat, project, user, excluded_voice_ids=()):
-    # Saved documents come in a later phase; the place for them is ready.
-    return workflows.build_system(project, chat.kind, documents=(),
+def build_system(chat, project, user, excluded_voice_ids=(), excluded_doc_ids=()):
+    """The system prompt: the project, the workflow, its saved documents and its voice references."""
+    from src.studio import documents
+    return workflows.build_system(project, chat.kind,
+                                  documents=documents.knowledge(project, excluded_doc_ids),
                                   voice=voice_examples(project, user, excluded_voice_ids))
 
 
@@ -412,7 +417,8 @@ def start_send(chat, project, user, data):
         chat.provider = provider
         chat.updated_at = now
         db.session.flush()
-        system = build_system(chat, project, user, _int_list(data.get('excluded_voice_ids')))
+        system = build_system(chat, project, user, _int_list(data.get('excluded_voice_ids')),
+                              _int_list(data.get('excluded_doc_ids')))
         history = build_history(chat, project, user)  # commits the message
     except Exception:
         db.session.rollback()
@@ -441,7 +447,8 @@ def start_regenerate(chat, project, user, data):
         chat.provider = provider
         chat.updated_at = datetime.utcnow()
         db.session.flush()
-        system = build_system(chat, project, user, _int_list(data.get('excluded_voice_ids')))
+        system = build_system(chat, project, user, _int_list(data.get('excluded_voice_ids')),
+                              _int_list(data.get('excluded_doc_ids')))
         history = build_history(chat, project, user)
     except Exception:
         db.session.rollback()

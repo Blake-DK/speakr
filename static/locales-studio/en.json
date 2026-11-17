@@ -51,7 +51,8 @@
         "materials": "Materials",
         "voice": "Voice",
         "people": "People",
-        "chats": "Chats"
+        "chats": "Chats",
+        "documents": "Documents"
       },
       "roles": {
         "owner": "Your project",
@@ -75,9 +76,9 @@
         "none": "Nothing yet.",
         "ownerOnlyHints": "Only the project's owner changes the transcription hints.",
         "dangerZone": "Delete this project",
-        "dangerHint": "Deletes the project, its materials and voice references, and its folder. The recordings stay, outside any folder, with the people who made them.",
+        "dangerHint": "Deletes the project, its materials, voice references, chats and documents, and its folder. The recordings stay, outside any folder, with the people who made them.",
         "deleteConfirmTitle": "Delete this project?",
-        "deleteConfirm": "“{{name}}”, its materials and its voice references are deleted. The recordings stay with the people who made them.",
+        "deleteConfirm": "“{{name}}”, its materials, voice references, chats and documents are deleted. The recordings stay with the people who made them.",
         "deleted": "The project was deleted."
       },
       "recordings": {
@@ -116,7 +117,8 @@
           "pdf": "PDF",
           "pptx": "Slide deck",
           "image": "Image"
-        }
+        },
+        "generate": "Generate an image"
       },
       "voice": {
         "intro": "Examples of how this project should sound. The writing tools of a later version will match them.",
@@ -133,6 +135,44 @@
         "sourceRecording": "Recording",
         "sourceText": "Pasted text, {{chars}} characters",
         "recordingHidden": "a recording you cannot open"
+      },
+      "documents": {
+        "intro": "Answers saved from a chat, and anything you write here. The model reads them with every answer in this project, the most recently changed first.",
+        "new": "New document",
+        "empty": "No documents yet. Save an answer with “Save as document” under it in a chat, or write one here.",
+        "titleLabel": "Title",
+        "titlePlaceholder": "For example: Tagline and synopsis",
+        "bodyLabel": "Text (Markdown)",
+        "bodyPlaceholder": "Write in Markdown. The model reads this as project knowledge in every chat.",
+        "changed": "Changed {{date}}",
+        "changedBy": "Changed {{date}} by {{name}}",
+        "chars": "{{chars}} characters",
+        "kinds": {
+          "other": "Written here",
+          "chat": "From a chat"
+        },
+        "download": "Download",
+        "formats": {
+          "md": "Markdown (.md)",
+          "docx": "Word (.docx)",
+          "pdf": "PDF (.pdf)",
+          "pptx": "PowerPoint slides (.pptx)"
+        },
+        "slidesHint": "Slides: every heading (# or ##) starts a new slide, and list items become its bullets.",
+        "copy": "Copy text",
+        "copied": "Copied",
+        "editTitle": "Edit document",
+        "newTitle": "New document",
+        "close": "Close",
+        "saved": "The document was saved.",
+        "unsaved": "Changes are not saved yet.",
+        "discardConfirmTitle": "Close without saving?",
+        "discardConfirm": "Your changes to this document are not saved.",
+        "discard": "Close without saving",
+        "reloadNewer": "Open the newer version",
+        "reloadNewerConfirm": "The newer version replaces your text in the editor. Copy your text first if you want to keep it.",
+        "deleteConfirmTitle": "Delete this document?",
+        "deleteConfirm": "“{{title}}” will be deleted, and the model no longer reads it. This cannot be undone."
       },
       "people": {
         "intro": "People on this list can open the project, its materials and voice references, and every recording in its folder, and can add their own. Only you change the list.",
@@ -215,6 +255,62 @@
         "empty": "There is no text left after removing timestamps and cue numbers."
       }
     },
+    "documents": {
+      "errors": {
+        "titleEmpty": "Give the document a title.",
+        "titleTooLong": "The title is too long: at most {{max}} characters.",
+        "bodyInvalid": "The text of the document could not be read.",
+        "bodyTooLong": "The document is too long: at most {{max}} characters.",
+        "bodyEmpty": "That answer has no text to save.",
+        "answerMissing": "That answer is no longer in this project’s chats.",
+        "notAnAnswer": "Only an answer of the model can be saved as a document.",
+        "kind": "That is not a kind of document.",
+        "version": "This document could not be saved. Close it, open it again and repeat your change.",
+        "nothing": "There is nothing to save.",
+        "changed": "Someone changed this document after you opened it, so your text was not saved. It is still here: copy it, then open the newer version.",
+        "changedBy": "{{name}} changed this document after you opened it, so your text was not saved. It is still here: copy it, then open the newer version.",
+        "makerOrOwner": "Only the person who made this document, or the project’s owner, can delete it.",
+        "format": "Choose Markdown, Word, PDF or PowerPoint.",
+        "pdfUnavailable": "PDF downloads are not available on this server."
+      }
+    },
+    "images": {
+      "title": "Generate an image",
+      "intro": "Poster concepts and social visuals, made by OpenAI’s image model. The image is added to Materials.",
+      "promptLabel": "What should it look like?",
+      "promptPlaceholder": "Describe the image: subject, mood, style, any text on it",
+      "promptStart": "Film poster for “{{name}}”. ",
+      "promptStartLogline": "Film poster for “{{name}}”: {{logline}}. ",
+      "shape": "Shape",
+      "shapes": {
+        "1024x1536": "Poster (portrait)",
+        "1024x1024": "Square (social post)",
+        "1536x1024": "Wide (banner or cover)"
+      },
+      "quality": "Quality",
+      "qualities": {
+        "medium": "Medium: good drafts, cheaper",
+        "high": "High: final quality, costs more",
+        "low": "Low: quick and rough"
+      },
+      "generate": "Generate",
+      "generating": "Generating… (this can take a minute)",
+      "added": "{{name}} was added to Materials.",
+      "unavailableNoKey": "Image generation needs an OpenAI API key on the server ({{env}}). Ask an administrator.",
+      "unavailableOff": "Image generation is switched off: GPT is switched off in the chat settings.",
+      "errors": {
+        "prompt": "Describe the image you want.",
+        "promptTooLong": "The description is too long: at most {{max}} characters.",
+        "options": "Choose a shape and a quality from the lists.",
+        "noKey": "Image generation needs an OpenAI API key on the server ({{env}}). Ask an administrator.",
+        "off": "Image generation is switched off: GPT is switched off in the chat settings.",
+        "keyRefused": "The OpenAI API key was refused. An administrator needs to check the server’s {{env}}.",
+        "rateLimited": "OpenAI is rate-limited right now. Wait a moment and try again.",
+        "api": "OpenAI API error ({{code}}): {{message}}",
+        "connection": "Could not reach the OpenAI API. Check the server’s internet connection.",
+        "noImage": "OpenAI sent no image back. Try again."
+      }
+    },
     "chat": {
       "search": "Search chats",
       "noChats": "No chats yet. Start one, or pick a workflow below.",
@@ -279,7 +375,7 @@
       "clear": "Clear",
       "done": "Done",
       "contextHint": "The model gets these with every answer. Click one to leave it out of your next messages.",
-      "contextEmpty": "Nothing extra: the model works from the project’s details and your attachments. Voice references show up here.",
+      "contextEmpty": "Nothing extra: the model works from the project’s details and your attachments. Saved documents and voice references show up here.",
       "contextHidden": "a recording you cannot open: left out",
       "included": "included",
       "excluded": "left out",
@@ -307,7 +403,13 @@
         "tooLong": "The message is too long: at most {{max}} characters.",
         "nothingToRegenerate": "There is no answer to write again yet.",
         "makerOrOwner": "Only the person who started this chat, or the project’s owner, can do that."
-      }
+      },
+      "saveAsDocument": "Save as document",
+      "saveAsDocumentHint": "Keep this answer on the Documents tab, where you can edit and download it",
+      "saveAsDocumentIntro": "The answer is saved on the Documents tab, where you can edit it and download it as Word, PDF or slides. The model reads it in every chat of this project.",
+      "savedAsDocument": "Saved on the Documents tab as “{{title}}”.",
+      "contextDocument": "Document",
+      "contextVoice": "Voice reference"
     },
     "settings": {
       "title": "Chat settings",
@@ -327,8 +429,11 @@
       "saved": "Saved.",
       "errors": {
         "model": "That is not a model name for {{provider}}.",
-        "listFailed": "The model list could not be loaded ({{error}})."
-      }
+        "listFailed": "The model list could not be loaded ({{error}}).",
+        "imageModel": "That is not an image model name."
+      },
+      "imageModel": "Image model (GPT)",
+      "imageModelHint": "Makes the images of “Generate an image” on the Materials tab. Leave empty to use the default."
     }
   }
 }

@@ -7,8 +7,12 @@ match its name: a PDF starts with "%PDF-", a PPTX is a zip holding
 ppt/presentation.xml, and each image type has its own signature. SVG and
 everything else is refused, so nothing a browser would run is ever stored.
 
+An image made with "Generate an image" (src/studio/images.py) is stored
+through the same checks and path as an upload (``store_bytes``).
+
 Files are kept by Speakr's storage service (local disk or S3) under
-``studio/materials/<project id>/``. A slide deck's text (slides, tables and
+``studio/materials/<project id>/``; a deleted project's empty folder is
+removed (``prune_project_folder``). A slide deck's text (slides, tables and
 speaker notes) is read once, at upload, with the standalone app's code, and
 shown as its preview; the chat of a later version reads the same text.
 """
@@ -169,15 +173,47 @@ def _remove(path):
 
 def store_upload(project, user, upload):
     """Check and store one uploaded file; returns the new StudioMaterial (added, not committed)."""
-    from src.database import db
     from src.services.storage import get_storage_service
-    from src.studio.models import StudioMaterial
 
     name = clean_name(upload.filename)
     if not name:
         raise MaterialError('studio.materials.errors.type', name='')
     storage = get_storage_service()
     path, size = _stage(upload, storage.get_staging_dir())
+    return _store_staged(project, user, storage, path, size, name)
+
+
+def store_bytes(project, user, data, filename):
+    """Check and store a file made by the studio itself (a generated image) as an upload is stored.
+
+    The same limits, the same check of the first bytes against the name, the
+    same storage path. Returns the new StudioMaterial (added, not committed).
+    """
+    from src.services.storage import get_storage_service
+
+    name = clean_name(filename)
+    if not name:
+        raise MaterialError('studio.materials.errors.type', name='')
+    if not data:
+        raise MaterialError('studio.materials.errors.empty', name=name)
+    if len(data) > MAX_MATERIAL_BYTES:
+        raise MaterialError('studio.materials.errors.size', name=name, max=MAX_MATERIAL_BYTES // (1024 * 1024))
+    storage = get_storage_service()
+    handle, path = tempfile.mkstemp(prefix='studio-material-', dir=storage.get_staging_dir())
+    try:
+        with os.fdopen(handle, 'wb') as out:
+            out.write(data)
+    except BaseException:
+        _remove(path)
+        raise
+    return _store_staged(project, user, storage, path, len(data), name)
+
+
+def _store_staged(project, user, storage, path, size, name):
+    """Check a staged file and move it into storage; returns the new StudioMaterial (added, not committed)."""
+    from src.database import db
+    from src.studio.models import StudioMaterial
+
     try:
         kind, content_type = check_type(path, name)
         text = pptx_text(path, name) if kind == 'pptx' else None
@@ -208,6 +244,23 @@ def delete_stored_file(material):
     except (OSError, ValueError, RuntimeError):
         import logging
         logging.getLogger(__name__).warning("Studio material %s: its file could not be removed", material.id)
+
+
+def prune_project_folder(project_id):
+    """Remove the project's material folder on local storage when nothing is left in it.
+
+    Deleting each file leaves its folder behind; a folder with anything in it
+    is left alone. Nothing to do on S3, which has no folders.
+    """
+    from src.services.storage import get_storage_service
+    from src.services.storage.locator import local_path_from_key
+    try:
+        storage = get_storage_service()
+        if storage.default_backend_kind() == 's3':
+            return
+        os.rmdir(local_path_from_key(storage.settings.local_root, f'{KEY_PREFIX}/{int(project_id)}'))
+    except (OSError, ValueError, RuntimeError, AttributeError):
+        pass
 
 
 def send(material, download):

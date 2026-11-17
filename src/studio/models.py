@@ -222,6 +222,33 @@ class StudioSetting(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class StudioDocument(db.Model):
+    """A saved document of a project: Markdown text, written on the page or saved from a chat answer.
+
+    Everyone who sees the project reads it and may change it; the project's
+    documents go with every chat answer as project knowledge
+    (src/studio/documents.py). ``kind`` is ``other``, ``chat`` or the id of the
+    workflow whose answer it was saved from. ``updated_at`` is also the
+    version a save must name, so two people editing at once never overwrite
+    each other unseen. ``created_by``, ``created_at`` and ``updated_at`` may be
+    set by an importer. A document stays when its maker's account is deleted
+    (``created_by`` becomes NULL).
+    """
+
+    __tablename__ = 'studio_document'
+
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey('studio_project.id', ondelete='CASCADE'), nullable=False,
+                           index=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    updated_by = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='SET NULL'), nullable=True)
+    title = db.Column(db.String(200), nullable=False)
+    kind = db.Column(db.String(40), nullable=False, default='other')
+    body = db.Column(db.Text, nullable=False, default='')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class StudioSchemaStep(db.Model):
     """The schema steps of src/studio/schema.py that have run on this database."""
 
