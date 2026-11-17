@@ -39,6 +39,12 @@ When it runs:
   longer an admin still holding one), so a change made by any route reaches
   them at the latest on their next request.
 
+The request hooks never take a request down: an error while giving an admin
+their memberships is rolled back and logged and the request goes on; an error
+while taking access back from someone who is no longer an admin is rolled
+back and logged and that person's request is refused with a 503 until the
+take-back succeeds (see ``before_request``).
+
 Off by default, so another install keeps Speakr's own rule. With the setting
 off, nothing here touches the database during a request. The rule needs
 Speakr's internal sharing (ENABLE_INTERNAL_SHARING): without it a share opens
@@ -51,7 +57,7 @@ import os
 from flask import g, has_request_context, request
 from flask_login import current_user
 from sqlalchemy import event, inspect
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import IntegrityError
 
 from src.database import db
 from src.studio import access
@@ -331,51 +337,121 @@ def startup(app_logger=None):
 
 # --- requests -----------------------------------------------------------------
 
+def _unavailable():
+    """The answer to a request refused because taking access back failed: a plain 503."""
+    from flask import Response
+    return Response('Your access is being updated. Try again in a moment.\n', status=503,
+                    mimetype='text/plain', headers={'Retry-After': '5', 'Cache-Control': 'no-store'})
+
+
+def _grants_left(user_id):
+    from src.studio.models import StudioAdminGrant
+    return StudioAdminGrant.query.filter_by(user_id=user_id).first() is not None
+
+
 def before_request():
-    """Bring the signed-in person's memberships in line with their admin status, before the request runs."""
+    """Bring the signed-in person's memberships in line with their admin status, before the request runs.
+
+    This rule must never take requests down:
+
+    - giving an admin their memberships: on any error the transaction is
+      rolled back, the error is logged, and the request goes on as if the
+      rule had not run (the next request tries again);
+    - taking access back from someone who is no longer an admin: on any error
+      the transaction is rolled back, the error is logged, and the request is
+      refused with a plain 503 while that person still holds the access, so a
+      former admin never keeps reading because the take-back failed. A request
+      that needs no take-back is never refused; if even the check whether one
+      is needed fails, the request goes on (nothing could be read then that
+      the check would have stopped: the check reads only the rule's own table).
+    """
     if not setting_on() or request.endpoint in (None, 'static'):
         return None
     try:
         if not current_user.is_authenticated or not access.sharing_enabled():
             return None
         user = current_user._get_current_object()
-        if not _needs_sync(user):
-            return None
+        user_id, is_admin = user.id, bool(user.is_admin)
+        needed = _needs_sync(user)
+    except Exception:
+        _rollback()
+        logger.exception("Studio: could not check whether a request needs the administrators' rule; "
+                         "the request goes on")
+        return None
+    if not needed:
+        return None
+    if is_admin:
+        try:
+            sync_user(user)
+            db.session.commit()
+        except IntegrityError:
+            _rollback()  # another request of the same person did it first
+        except Exception:
+            _rollback()
+            logger.exception("Studio: an administrator's memberships could not be added; the request goes on")
+        return None
+    try:
         sync_user(user)
         db.session.commit()
-    except IntegrityError:
-        db.session.rollback()  # another request of the same person did it first
-    except SQLAlchemyError:
+        return None
+    except Exception:
+        _rollback()
+        logger.exception("Studio: access of a former administrator could not be taken back; the request is "
+                         "refused until it can")
+    try:
+        if not _grants_left(user_id):
+            return None  # another request took it back meanwhile
+    except Exception:
+        _rollback()
+    return _unavailable()
+
+
+def _rollback():
+    try:
         db.session.rollback()
-        logger.exception("Studio: the administrators' access could not be brought in line for a request")
-    return None
+    except Exception:
+        logger.exception("Studio: rollback failed")
 
 
 def _note_status_change(mapper, connection, target):
-    """User after_insert / after_update: remember accounts whose admin status changed in this request."""
-    if not has_request_context():
-        return
-    # A new account made an admin has the value as a change too; one left at
-    # the default (not an admin) has none and needs nothing.
-    if not inspect(target).attrs.is_admin.history.has_changes():
-        return
-    changed = getattr(g, _CHANGED_KEY, None)
-    if changed is None:
-        changed = set()
-        setattr(g, _CHANGED_KEY, changed)
-    changed.add(target.id)
+    """User after_insert / after_update: remember accounts whose admin status changed in this request.
+
+    Runs inside Speakr's own flush, so it never raises: a failure here only
+    leaves the change to the next request of that account, or the next start.
+    """
+    try:
+        if not has_request_context():
+            return
+        # A new account made an admin has the value as a change too; one left at
+        # the default (not an admin) has none and needs nothing.
+        if not inspect(target).attrs.is_admin.history.has_changes():
+            return
+        changed = getattr(g, _CHANGED_KEY, None)
+        if changed is None:
+            changed = set()
+            setattr(g, _CHANGED_KEY, changed)
+        changed.add(target.id)
+    except Exception:
+        logger.exception("Studio: a change of admin status could not be noted; it is handled on that "
+                         "account's next request")
 
 
 def after_request(response):
-    """After a request that changed someone's admin status: bring that account in line now."""
-    changed = getattr(g, _CHANGED_KEY, None)
-    if not changed:
-        return response
-    setattr(g, _CHANGED_KEY, None)
-    if not setting_on():
-        return response
-    from src.models import User
+    """After a request that changed someone's admin status: bring that account in line now.
+
+    Never raises and always returns the response it was given. On an error the
+    rule's changes are rolled back and logged; a person who lost admin status
+    then meets the take-back again before their next request
+    (``before_request``), which refuses that request if it still fails.
+    """
     try:
+        changed = getattr(g, _CHANGED_KEY, None)
+        if not changed:
+            return response
+        setattr(g, _CHANGED_KEY, None)
+        if not setting_on():
+            return response
+        from src.models import User
         # What the request left uncommitted would be rolled back when it ends
         # anyway; roll it back first, so only the rule's own changes commit.
         db.session.rollback()
@@ -386,8 +462,8 @@ def after_request(response):
             if user is not None:
                 sync_user(user)
         db.session.commit()
-    except SQLAlchemyError:
-        db.session.rollback()
+    except Exception:
+        _rollback()
         logger.exception("Studio: the administrators' access could not be brought in line after a change "
                          "of admin status")
     return response

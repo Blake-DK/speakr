@@ -376,3 +376,105 @@ def test_the_new_strings_exist():
     assert 'adminsSee' in strings['project']['people']
     assert {'countsHiddenAll', 'countsHiddenSome'} <= set(strings['projects'])
     assert 'yet' not in strings['project']['recordings']['hiddenAll']
+
+
+# --- the request hooks never take a request down --------------------------------
+
+def _boom(*args, **kwargs):
+    raise RuntimeError('planted error')
+
+
+def test_an_error_giving_an_admin_access_leaves_the_request_answered_and_nothing_half_written(
+        private, admins_see, monkeypatch):
+    world = private['world']
+    _startup()
+    newcomer = world.user()
+    User.query.filter_by(id=newcomer).update({'is_admin': True}, synchronize_session=False)
+    db.session.commit()
+    group_id = _project(private['project']).group_id
+    # The memberships are added and flushed, then sharing the folder fails.
+    monkeypatch.setattr(admin_access, '_share_folder', _boom)
+    response = world.client(newcomer).get('/api/studio/projects')
+    assert response.status_code == 200
+    assert newcomer not in _members(group_id)
+    assert newcomer not in _grants(private['project'])
+    assert not any(_opens(newcomer, rid) for rid in private['recordings'])
+    # With the error gone, the next request gives the access.
+    monkeypatch.undo()
+    monkeypatch.setenv('STUDIO_ADMINS_SEE_RECORDINGS', 'true')
+    assert world.client(newcomer).get('/api/studio/projects').status_code == 200
+    assert _members(group_id)[newcomer] == 'member'
+    assert all(_opens(newcomer, rid) for rid in private['recordings'])
+
+
+def test_an_error_taking_access_back_refuses_the_request_until_it_works(private, admins_see, monkeypatch):
+    world = private['world']
+    _startup()
+    User.query.filter_by(id=private['admin']).update({'is_admin': False}, synchronize_session=False)
+    db.session.commit()
+    monkeypatch.setattr(admin_access, '_take_back', _boom)
+    response = world.client(private['admin']).get('/api/studio/projects')
+    assert response.status_code == 503
+    assert response.mimetype == 'text/plain'
+    # Rolled back: the grant and the shares are still there, and nothing was served.
+    assert private['admin'] in _grants(private['project'])
+    # Every request of that person is refused while the take-back fails.
+    assert world.client(private['admin']).get(f"/api/recordings/{private['recordings'][0]}").status_code == 503
+    # Error removed: the next request takes the access back and is answered.
+    monkeypatch.undo()
+    monkeypatch.setenv('STUDIO_ADMINS_SEE_RECORDINGS', 'true')
+    assert world.client(private['admin']).get('/api/studio/projects').status_code == 200
+    assert private['admin'] not in _grants(private['project'])
+    assert not any(_opens(private['admin'], rid) for rid in private['recordings'])
+
+
+def test_a_request_that_needs_no_take_back_is_never_refused(private, admins_see, monkeypatch):
+    world = private['world']
+    _startup()
+    monkeypatch.setattr(admin_access, '_take_back', _boom)
+    monkeypatch.setattr(admin_access, 'sync_project', _boom)
+    # The owner holds no grant; the admin is already in every group.
+    assert world.client(private['owner']).get('/api/studio/projects').status_code == 200
+    assert world.client(private['admin']).get('/api/studio/projects').status_code == 200
+
+
+def test_an_error_in_the_check_itself_lets_the_request_go_on(private, admins_see, monkeypatch):
+    world = private['world']
+    _startup()
+    monkeypatch.setattr(admin_access, '_needs_sync', _boom)
+    assert world.client(private['owner']).get('/api/studio/projects').status_code == 200
+
+
+def test_after_request_with_an_error_returns_the_original_response(private, admins_see, monkeypatch):
+    world = private['world']
+    _startup()
+    newcomer = world.user()
+    monkeypatch.setattr(admin_access, 'sync_user', _boom)
+    response = world.client(private['admin']).post(f'/admin/users/{newcomer}/toggle-admin')
+    assert response.status_code == 200
+    assert response.get_json() == {'success': True, 'is_admin': True}
+    db.session.expire_all()
+    assert db.session.get(User, newcomer).is_admin is True
+    assert newcomer not in _members(_project(private['project']).group_id)
+    # Called directly, it hands back the very object it was given.
+    from flask import g
+    marker = app.response_class('kept', status=299)
+    with app.test_request_context('/'):
+        setattr(g, admin_access._CHANGED_KEY, {newcomer})
+        assert admin_access.after_request(marker) is marker
+
+
+def test_an_error_noting_a_status_change_does_not_break_speakrs_own_save(private, admins_see, monkeypatch):
+    world = private['world']
+    _startup()
+    newcomer = world.user()
+    monkeypatch.setattr(admin_access, 'inspect', _boom)
+    response = world.client(private['admin']).post(f'/admin/users/{newcomer}/toggle-admin')
+    assert response.status_code == 200
+    db.session.expire_all()
+    assert db.session.get(User, newcomer).is_admin is True
+    # The change is still caught, on that account's next request.
+    monkeypatch.undo()
+    monkeypatch.setenv('STUDIO_ADMINS_SEE_RECORDINGS', 'true')
+    world.client(newcomer).get('/api/studio/projects')
+    assert all(_opens(newcomer, rid) for rid in private['recordings'])

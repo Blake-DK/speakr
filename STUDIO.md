@@ -74,6 +74,14 @@ site running this code can get its source.
   people on the People list are told on the project page. Being in the group
   also lets an admin add recordings of their own to the project. Needs
   `ENABLE_INTERNAL_SHARING=true`; without it the rule waits.
+  The rule never takes a request down. If giving an admin their memberships
+  fails, the change is rolled back, the error is logged, and the request goes
+  on as if the rule had not run (the next request tries again). If taking
+  access back from someone who is no longer an admin fails, the change is
+  rolled back, the error is logged, and that person's requests are refused
+  with a plain 503 until the take-back succeeds, so a former admin never
+  keeps reading because of the error. A request that needs no take-back is
+  never refused.
 - Materials are stored through Speakr's storage service (local disk or S3)
   under `studio/materials/`. Accepted: PDF, PPTX, PNG, JPG, WebP and GIF, up
   to 30 MB each, checked by their first bytes as well as their names.
