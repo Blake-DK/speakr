@@ -80,6 +80,16 @@ jobs:
           docker run --rm -v "$PWD":/repo -w /repo -e PYTHONDONTWRITEBYTECODE=1 --entrypoint sh speakr-studio:ci -c \
             'pip install -q --disable-pip-version-check pytest==9.2.0 && python -c "import pptx" && python -m pytest tests/studio -q -p no:cacheprovider -rs'
 
+      # The app runs as a user without a writable home. A PDF rendered that way
+      # must find the image's font cache valid and print nothing; a stale cache
+      # makes fontconfig log an error on every PDF. Checked on the built image,
+      # as it is shipped (a check during the build cannot see it).
+      - name: PDF as a user without a home
+        run: |
+          out="$(docker run --rm -u 911:911 -e HOME=/ --entrypoint python speakr-studio:ci \
+            -c 'import weasyprint; weasyprint.HTML(string="<p>ok</p>").write_pdf()' 2>&1)"
+          if [ -n "$out" ]; then printf '%s\n' "$out"; exit 1; fi
+
       - name: Log in to GHCR
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
