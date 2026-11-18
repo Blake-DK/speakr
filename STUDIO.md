@@ -318,8 +318,12 @@ upstream release merges and upstream's tests read what they expect.
   `src/config/app_config.py` and the connectors; no setting changes them),
   webhook header names, the calendar file's `PRODID`, log lines, and the
   identifiers, image, stack, container and address names.
-- The icons: `src/studio/icons/` (the letters SB on the accent blue, drawn
-  by `scripts/studio_icons.py`) replace Speakr's under `static/img/`.
+- The icons: `src/studio/icons/` replace Speakr's under `static/img/`. They
+  are Noto Emoji's clapperboard (U+1F3AC) with a thin white outline, so the
+  dark board shows on a dark tab or bar, drawn by `scripts/studio_icons.py`
+  from `src/studio/icons/noto-emoji/` (the source image, its licence, the SIL
+  Open Font License 1.1, and where it came from). One image for every device,
+  whatever the system's emoji font.
 - The studio's own pages take the name from `src/studio/brand.py`.
 
 The script lists what it changed in `/app/studio-rebrand.json` and prints it

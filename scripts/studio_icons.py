@@ -1,61 +1,59 @@
-"""Draws ScriptBot's mark into src/studio/icons/: the letters SB in white on the
-app's accent blue (the default colour scheme's button colour, #2563eb), in the
-sizes and file names of Speakr's icons under static/img/, which
-src/studio/rebrand.py replaces with these when the image is built.
+"""Draws ScriptBot's icons into src/studio/icons/: Noto Emoji's clapperboard
+(src/studio/icons/noto-emoji/, with its source and licence), with a thin white
+outline so that its dark board shows on a dark tab or top bar, in the sizes and
+file names of Speakr's icons under static/img/, which src/studio/rebrand.py
+replaces with these when the image is built. One image for every size and
+device: the icons do not depend on the system's emoji font.
 
-Needs Pillow and the DejaVu fonts, both in the studio image:
+Needs Pillow, which the studio image has:
 
     docker run --rm --memory 512m --network none -u "$(id -u):$(id -g)" -v "$PWD":/w -w /w \
-        --entrypoint python ghcr.io/blake-dk/speakr-studio:<tag> scripts/studio_icons.py
+        --entrypoint python ghcr.io/blake-dk/speakr-studio:<tag> -I scripts/studio_icons.py
 """
 
 import os
 import sys
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageFilter
 
-ACCENT = (0x25, 0x63, 0xEB, 255)
-WHITE = (255, 255, 255, 255)
-FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
-TEXT = 'SB'
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src', 'studio', 'icons')
-SCALE = 4  # drawn larger, then scaled down, for smooth edges
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SOURCE = os.path.join(ROOT, 'src', 'studio', 'icons', 'noto-emoji', 'emoji_u1f3ac.png')
+OUT = os.path.join(ROOT, 'src', 'studio', 'icons')
+WHITE = (255, 255, 255)
+BASE = 512        # the outlined mark is made once at this size, then scaled down
+INSET = 24        # room for the outline inside the square
+OUTLINE = 21      # outline width at 512 px: about 1 px at 16 px
 
 
-def mark(size, maskable=False):
-    big = size * SCALE
-    image = Image.new('RGBA', (big, big), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    if maskable:
-        # Full bleed: the system cuts its own shape; the letters stay inside the safe circle (80 %).
-        draw.rectangle((0, 0, big, big), fill=ACCENT)
-        text_width = 0.46 * big
-    else:
-        draw.rounded_rectangle((0, 0, big - 1, big - 1), radius=round(0.22 * big), fill=ACCENT)
-        text_width = 0.64 * big
-    font_size = big
-    font = ImageFont.truetype(FONT, font_size)
-    left, top, right, bottom = font.getbbox(TEXT)
-    font_size = int(font_size * text_width / (right - left))
-    font = ImageFont.truetype(FONT, font_size)
-    left, top, right, bottom = font.getbbox(TEXT)
-    x = (big - (right - left)) / 2 - left
-    y = (big - (bottom - top)) / 2 - top
-    draw.text((x, y), TEXT, font=font, fill=WHITE)
-    return image.resize((size, size), Image.LANCZOS)
+def outlined_mark():
+    source = Image.open(SOURCE).convert('RGBA')
+    inner = source.resize((BASE - 2 * INSET, BASE - 2 * INSET), Image.LANCZOS)
+    mark = Image.new('RGBA', (BASE, BASE), (0, 0, 0, 0))
+    mark.alpha_composite(inner, (INSET, INSET))
+    halo = Image.new('RGBA', (BASE, BASE), WHITE + (0,))
+    halo.putalpha(mark.split()[3].filter(ImageFilter.MaxFilter(2 * OUTLINE + 1)))
+    out = Image.new('RGBA', (BASE, BASE), (0, 0, 0, 0))
+    out.alpha_composite(halo)
+    out.alpha_composite(mark)
+    return out
 
 
 def main():
-    os.makedirs(OUT, exist_ok=True)
+    mark = outlined_mark()
     for name, size in (('icon-16x16.png', 16), ('icon-32x32.png', 32), ('icon-64.png', 64), ('icon-128.png', 128),
                        ('icon-180x180.png', 180), ('icon-192x192.png', 192), ('icon-512x512.png', 512)):
-        mark(size).save(os.path.join(OUT, name), optimize=True)
-    mark(512, maskable=True).save(os.path.join(OUT, 'icon-maskable-512x512.png'), optimize=True)
-    # The favicon in the sizes browsers pick from, each drawn at its own size.
-    largest = mark(48)
-    largest.save(os.path.join(OUT, 'favicon.ico'), sizes=[(16, 16), (32, 32), (48, 48)],
-                 append_images=[mark(16), mark(32)])
-    print('\n'.join(sorted(os.listdir(OUT))))
+        mark.resize((size, size), Image.LANCZOS).save(os.path.join(OUT, name), optimize=True)
+    # Maskable: the system cuts its own shape out of a full square, so the mark sits on white,
+    # inside the safe circle (80 % of the side).
+    maskable = Image.new('RGBA', (BASE, BASE), WHITE + (255,))
+    side = int(BASE * 0.56)
+    maskable.alpha_composite(mark.resize((side, side), Image.LANCZOS), ((BASE - side) // 2, (BASE - side) // 2))
+    maskable.save(os.path.join(OUT, 'icon-maskable-512x512.png'), optimize=True)
+    # The favicon in the sizes browsers pick from, each scaled from the same mark.
+    mark.resize((48, 48), Image.LANCZOS).save(
+        os.path.join(OUT, 'favicon.ico'), sizes=[(16, 16), (32, 32), (48, 48)],
+        append_images=[mark.resize((16, 16), Image.LANCZOS), mark.resize((32, 32), Image.LANCZOS)])
+    print('\n'.join(sorted(n for n in os.listdir(OUT) if not os.path.isdir(os.path.join(OUT, n)))))
     return 0
 
 

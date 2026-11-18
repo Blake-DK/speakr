@@ -236,3 +236,14 @@ def test_the_share_foot_has_one_source_link_and_no_name(monkeypatch):
     assert re.findall(r'href="([^"]+)"', html) == ['https://github.com/Blake-DK/speakr/tree/v0.11.0-studio.16']
     assert 'Speakr' not in html.split('#}')[-1]
     assert '>Source code</a>' in html
+
+
+def test_the_clapperboard_keeps_its_source_and_licence():
+    import hashlib
+    folder = os.path.join(rb.ICON_DIR, 'noto-emoji')
+    with open(os.path.join(folder, 'emoji_u1f3ac.png'), 'rb') as handle:
+        digest = hashlib.sha256(handle.read()).hexdigest()
+    readme = _read(folder, 'README.md')
+    assert digest in readme and 'v2026-09-24-unicode18_0' in readme and '2D/png/512/emoji_u1f3ac.png' in readme
+    licence = _read(folder, 'LICENSE')
+    assert licence.startswith('Copyright 2013 Google LLC') and 'SIL OPEN FONT LICENSE Version 1.1' in licence
