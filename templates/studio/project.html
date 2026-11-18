@@ -281,7 +281,9 @@
                            v-text="st('studio.project.recordings.empty')"></p>
                         <ul v-else class="divide-y divide-[var(--border-primary)]" data-studio-recording-list>
                             <li v-for="rec in recordings" :key="rec.id" class="py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-                                <a :href="rec.url" class="font-medium text-[var(--text-accent)] hover:underline break-words min-w-0 flex-1"
+                                <!-- Below sm the title takes the whole row and the status and "Discuss in chat"
+                                     go on the line under it; from sm on, as before (flex: 1 1 0%). -->
+                                <a :href="rec.url" class="font-medium text-[var(--text-accent)] hover:underline break-words min-w-0 grow basis-full sm:basis-0"
                                    v-text="rec.title || ('#' + rec.id)"></a>
                                 <span :class="statusClass(rec.status)" v-text="statusLabel(rec.status)"></span>
                                 <span v-if="rec.is_archived" class="chip" v-text="st('studio.project.recordings.archived')"></span>
@@ -448,7 +450,8 @@
                                             <span v-text="' · ' + api.formatDate(item.created_at)"></span>
                                         </p>
                                     </div>
-                                    <div class="flex flex-wrap gap-2">
+                                    <!-- Below sm on a line of their own, under the title. -->
+                                    <div class="flex flex-wrap gap-2 w-full sm:w-auto">
                                         <button v-if="item.source === 'text'" type="button" class="btn btn--sm" @click="toggleVoiceText(item)"
                                                 v-text="openText['v' + item.id] !== undefined ? st('studio.common.hideText') : st('studio.common.showText')"></button>
                                         <button v-if="item.can_delete" type="button" class="btn btn--sm btn--ghost" @click="deleteVoice(item)"
@@ -782,7 +785,8 @@
                                             @click="docs.openDocument(item)" v-text="item.title"></button>
                                     <p class="text-xs text-[var(--text-muted)]" v-text="docs.meta(item)"></p>
                                 </div>
-                                <div class="flex flex-wrap gap-2">
+                                <!-- Below sm on a line of their own, under the title. -->
+                                <div class="flex flex-wrap gap-2 w-full sm:w-auto">
                                     <button type="button" class="btn btn--sm" @click="docs.openDocument(item)" v-text="st('studio.common.open')"></button>
                                     <button v-if="item.can_delete" type="button" class="btn btn--sm btn--ghost" @click="docs.remove(item)"
                                             v-text="st('studio.common.delete')"></button>
@@ -800,29 +804,33 @@
                                         <i class="fas fa-xmark" aria-hidden="true"></i>
                                     </button>
                                 </div>
-                                <form class="modal-body space-y-3" @submit.prevent="docs.save">
-                                    <label class="block">
-                                        <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.project.documents.titleLabel')"></span>
-                                        <input v-model="docs.editor.title" type="text" maxlength="200" class="field w-full" required
-                                               :placeholder="st('studio.project.documents.titlePlaceholder')">
-                                    </label>
-                                    <label class="block">
-                                        <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.project.documents.bodyLabel')"></span>
-                                        <textarea v-model="docs.editor.body" rows="16" maxlength="300000" class="field w-full font-mono text-sm"
-                                                  :placeholder="st('studio.project.documents.bodyPlaceholder')"></textarea>
-                                    </label>
-                                    <div v-if="docs.editor.id" class="space-y-1">
-                                        <p class="text-sm font-medium text-[var(--text-secondary)]" v-text="st('studio.project.documents.download')"></p>
-                                        <div class="flex flex-wrap gap-2">
-                                            <a v-for="format in docs.formats" :key="format" class="btn btn--sm" :data-studio-download="format"
-                                               :href="docs.downloadUrl(docs.editor.id, format)" download
-                                               v-text="st('studio.project.documents.formats.' + format)"></a>
+                                <!-- The footer sits outside the scrolling body, as in Speakr's own dialogs, so Close
+                                     and Save stay in view; the text field shrinks to what is left (at least 8rem). -->
+                                <form class="flex flex-col flex-auto min-h-0" @submit.prevent="docs.save">
+                                    <div class="modal-body flex flex-col gap-3">
+                                        <label class="block shrink-0">
+                                            <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.project.documents.titleLabel')"></span>
+                                            <input v-model="docs.editor.title" type="text" maxlength="200" class="field w-full" required
+                                                   :placeholder="st('studio.project.documents.titlePlaceholder')">
+                                        </label>
+                                        <label class="flex flex-col flex-auto min-h-0">
+                                            <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.project.documents.bodyLabel')"></span>
+                                            <textarea v-model="docs.editor.body" rows="16" maxlength="300000" class="field w-full font-mono text-sm flex-auto min-h-32"
+                                                      :placeholder="st('studio.project.documents.bodyPlaceholder')"></textarea>
+                                        </label>
+                                        <div v-if="docs.editor.id" class="space-y-1 shrink-0">
+                                            <p class="text-sm font-medium text-[var(--text-secondary)]" v-text="st('studio.project.documents.download')"></p>
+                                            <div class="flex flex-wrap gap-2">
+                                                <a v-for="format in docs.formats" :key="format" class="btn btn--sm" :data-studio-download="format"
+                                                   :href="docs.downloadUrl(docs.editor.id, format)" download
+                                                   v-text="st('studio.project.documents.formats.' + format)"></a>
+                                            </div>
+                                            <p class="text-xs text-[var(--text-muted)]" v-text="st('studio.project.documents.slidesHint')"></p>
+                                            <p v-if="docs.dirty()" class="text-xs text-[var(--text-muted)]" v-text="st('studio.project.documents.unsaved')"></p>
                                         </div>
-                                        <p class="text-xs text-[var(--text-muted)]" v-text="st('studio.project.documents.slidesHint')"></p>
-                                        <p v-if="docs.dirty()" class="text-xs text-[var(--text-muted)]" v-text="st('studio.project.documents.unsaved')"></p>
+                                        <p v-if="docs.editor.error" class="notice notice--danger shrink-0" role="alert" v-text="docs.editor.error"></p>
                                     </div>
-                                    <p v-if="docs.editor.error" class="notice notice--danger" role="alert" v-text="docs.editor.error"></p>
-                                    <div class="modal-footer px-0 pb-0 flex-wrap">
+                                    <div class="modal-footer flex-wrap">
                                         <button v-if="docs.editor.id && docs.editor.canDelete" type="button" class="btn btn--ghost mr-auto"
                                                 @click="docs.remove()" v-text="st('studio.common.delete')"></button>
                                         <button type="button" class="btn btn--ghost" @click="docs.copyBody"

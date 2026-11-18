@@ -240,7 +240,13 @@ Rules:
   opened (nothing sent or saved), Chat settings, `/` and `/account`. For
   each: no error from the site's own scripts in the console, no element
   marked hidden that shows, no string key in the text, no sideways scroll,
-  and the project's name on one line where it fits. On a project page, every
+  the project's name on one line where it fits, and at 390 px no title of a
+  list row narrower than about 120 px (measure the title element's width;
+  a title squeezed beside its buttons reads a few letters to a line). Check
+  the six UI themes at 390 px too (set `data-ui-theme` and the theme's
+  stylesheet in the open page only; `speakrApplyUiTheme` saves the choice).
+  The document editor at 390 px must show Close and Save without scrolling.
+  On a project page, every
   `/static/` script and stylesheet should equal the server's copy: fetch it
   as the page has it, and once more with another `v` and
   `cache: 'no-store'` (the worker lets that through), and compare.
