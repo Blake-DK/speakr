@@ -30,7 +30,8 @@
                     :aria-label="t('tooltips.copyTranscript')" :title="t('tooltips.copyTranscript')">
                 <i class="fas fa-copy" aria-hidden="true"></i>
             </button>
-            <button v-if="processedTranscription.isJson && processedTranscription.hasDialogue"
+            {#- studio add-on: Follow player for every timed transcript, with or without speakers (src/studio/speaker_view.py) -#}
+            <button v-if="processedTranscription.isJson"
                     type="button" class="ph-ib ph-toggle" data-phone-follow @click="toggleFollowPlayerMode"
                     :aria-pressed="followPlayerMode ? 'true' : 'false'"
                     :aria-label="followPlayerMode ? t('tooltips.followPlayerEnabled') : t('tooltips.followPlayerDisabled')"

@@ -10,7 +10,7 @@ from flask import Blueprint, abort, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from src.database import db
-from src.studio import access, admin_access, landing, materials, projects, sharing, voice
+from src.studio import access, admin_access, landing, materials, projects, sharing, speaker_view, voice
 from src.studio.i18n import studio_message, studio_strings, studio_strings_for, studio_t, user_language
 
 from src.studio.brand import DEFAULT_SOURCE_URL, app_name, release, source_link, source_url  # noqa: F401
@@ -53,7 +53,10 @@ def inject_studio_helpers():
     the release and the source link for the studio's pages and for what src/studio/rebrand.py writes
     into upstream's (the About tab's licence line, the share page's foot)."""
     return {'studio_t': studio_t, 'studio_message': studio_message, 'studio_strings_for': studio_strings_for,
-            'studio_app_name': app_name(), 'studio_release': release(), 'studio_source_link': source_link()}
+            'studio_app_name': app_name(), 'studio_release': release(), 'studio_source_link': source_link(),
+            'studio_hide_placeholder_speakers': speaker_view.enabled(),
+            'studio_hide_needs_speakers': lambda: speaker_view.hide_needs_speakers(
+                current_user.id if current_user.is_authenticated else None)}
 
 
 def _error(key, status, **params):

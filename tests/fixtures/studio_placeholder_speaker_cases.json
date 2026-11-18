@@ -1,0 +1,15 @@
+{
+  "about": "Cases of the placeholder speaker rule (src/studio/speaker_view.py, static/js/studio/speaker-view.js): the speakers of a transcript's segments, and whether their label is hidden. Both implementations are tested against this file.",
+  "cases": [
+    {"speakers": ["SPEAKER_00", "SPEAKER_00", "SPEAKER_00"], "hidden": true, "why": "one placeholder throughout"},
+    {"speakers": ["SPEAKER_00"], "hidden": true, "why": "a single segment"},
+    {"speakers": [" SPEAKER_00 ", "SPEAKER_00"], "hidden": true, "why": "spaces around the label"},
+    {"speakers": ["Speaker 1", "Speaker 1"], "hidden": true, "why": "another form of the same kind of label"},
+    {"speakers": ["SPEAKER_00", null, ""], "hidden": true, "why": "segments without a speaker do not count"},
+    {"speakers": ["SPEAKER_00", "SPEAKER_01"], "hidden": false, "why": "two labels: a transcriber that tells voices apart"},
+    {"speakers": ["Alex", "Alex"], "hidden": false, "why": "a real name"},
+    {"speakers": ["SPEAKER_00", "Alex"], "hidden": false, "why": "a named speaker beside the placeholder"},
+    {"speakers": [null, null], "hidden": false, "why": "no speaker at all: nothing to hide"},
+    {"speakers": [], "hidden": false, "why": "no segments"}
+  ]
+}

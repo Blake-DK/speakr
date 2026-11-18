@@ -23,7 +23,8 @@
         </div>
         <div class="tabs-bar__actions">
             <!-- Follow Player toggle (icon-only; label in tooltip) -->
-            <button v-if="processedTranscription.isJson && processedTranscription.hasDialogue"
+            {#- studio add-on: Follow player for every timed transcript, with or without speakers (src/studio/speaker_view.py) -#}
+            <button v-if="processedTranscription.isJson"
                     @click="toggleFollowPlayerMode"
                     class="toggle"
                     :class="{ 'is-on': followPlayerMode }"

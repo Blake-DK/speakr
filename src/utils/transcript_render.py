@@ -72,6 +72,8 @@ def render_segments(segments, template_format, header=None):
     """Render each segment with `template_format`, one rendering per segment,
     joined by newlines. A non-empty `header` comes first, followed by a blank
     line; trailing line breaks in it are ignored."""
+    from src.studio.speaker_view import template_for as _studio_template_for  # studio add-on: no placeholder speaker
+    template_format = _studio_template_for(segments, template_format)  # studio add-on: {{speaker}} left out when it is one
     lines = []
     for index, segment in enumerate(segments, 1):
         start, end = segment.get('start_time'), segment.get('end_time')

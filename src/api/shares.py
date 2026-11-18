@@ -91,6 +91,9 @@ def public_transcript(transcription_str):
     def seconds(value):
         return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
+    from src.studio.speaker_view import without_placeholder as _studio_without  # studio add-on: no placeholder speaker
+    data = _studio_without(data)  # studio add-on
+
     speakers = {}
     segments = []
     for seg in data:

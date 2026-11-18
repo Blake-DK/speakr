@@ -7,6 +7,7 @@ import { savedColorScheme } from '../utils/theme-defaults.js';
 import { filenameFromContentDisposition } from '../utils/content-disposition.js';
 import { confirmDialog } from '../utils/dialogs.js';
 import { realSpeakers } from '../utils/speaker-labels.js';
+import { displayedTranscript as studioDisplayedTranscript } from '../../studio/speaker-view.js';  // studio add-on: no placeholder speaker
 
 /**
  * Decide whether the sidebar should start collapsed.
@@ -1582,10 +1583,11 @@ export function useUI(state, utils, processedTranscription) {
     const getDisplayedTranscription = () => {
         const rec = selectedRecording.value;
         if (!rec) return '';
+        // studio add-on: copied without the placeholder speaker, as shown
         if (viewingTranslation.value) {
-            return rec.transcription_translation || '';
+            return studioDisplayedTranscript(rec.transcription_translation || '');
         }
-        return rec.transcription || '';
+        return studioDisplayedTranscript(rec.transcription || '');
     };
 
     const copyTranscription = (event) => {

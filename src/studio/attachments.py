@@ -60,13 +60,11 @@ def transcript_text(recording, timestamps=True):
     if segments is None:
         return raw.strip() or None
     from src.utils.transcript_render import render_segments
-    speakers = {s.get('speaker') for s in segments if isinstance(s, dict)}
-    if timestamps:
-        # One speaker label throughout (the transcription service labels every
-        # segment the same) says nothing; leave it out.
-        template = '[{{start_time}}] {{text}}' if len(speakers) <= 1 else '[{{start_time}}] {{speaker}}: {{text}}'
-    else:
-        template = '{{text}}' if len(speakers) <= 1 else '{{speaker}}: {{text}}'
+    # A placeholder speaker (SPEAKER_00 throughout) is left out by render_segments itself
+    # (src/studio/speaker_view.py), so the rule is the same here as everywhere else.
+    named = any(isinstance(s, dict) and s.get('speaker') for s in segments)
+    speaker = '{{speaker}}: ' if named else ''
+    template = f'[{{{{start_time}}}}] {speaker}{{{{text}}}}' if timestamps else f'{speaker}{{{{text}}}}'
     text = render_segments(segments, template)
     return text.strip() or None
 

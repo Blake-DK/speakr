@@ -3,9 +3,16 @@
     scripts here run).
 
     - static/js/studio/main-page.js: the "what to share" dialog before the browser's
-      screen-share picker (static/js/studio/share-help.js). -#}
+      screen-share picker (static/js/studio/share-help.js).
+    - no placeholder speaker (src/studio/speaker_view.py): the setting for
+      static/js/studio/speaker-view.js, and static/css/studio/main-page.css. -#}
 <script>
     window.__STUDIO_I18N = {{ studio_strings_for('shareHelp')|tojson }};
+    window.__STUDIO_HIDE_PLACEHOLDER_SPEAKERS = {{ studio_hide_placeholder_speakers|tojson }};
+    {%- if studio_hide_needs_speakers() %}
+    document.documentElement.classList.add('studio-hide-needs-speakers');
+    {%- endif %}
 </script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/studio/main-page.css', v=app_version) }}" data-studio-speaker-css>
 <script src="{{ url_for('static', filename='js/studio/strings.js', v=app_version) }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/studio/main-page.js', v=app_version) }}" data-studio-main-page></script>

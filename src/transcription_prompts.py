@@ -101,6 +101,9 @@ def format_transcription_for_llm(transcription_text, include_timestamps=False, t
         if isinstance(transcription_data, list):
             # It's our simplified JSON format
             formatted_lines = []
+            from src.studio.speaker_view import hides as _studio_hides  # studio add-on: no placeholder speaker
+            if _studio_hides(transcription_data):  # studio add-on: the sentences without "[SPEAKER_00]: "
+                return "\n".join(str(segment.get('sentence', '')) for segment in transcription_data if isinstance(segment, dict))
             for segment in transcription_data:
                 speaker = segment.get('speaker', 'Unknown Speaker')
                 sentence = segment.get('sentence', '')

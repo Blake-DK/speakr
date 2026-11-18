@@ -11,6 +11,11 @@ ScriptBot's icons (`src/studio/icons/*.png`, `favicon.ico`) are drawn by
   the SIL Open Font License, version 1.1, Copyright 2013 Google LLC. (The
   repository's README still says that "most image resources" are under the
   Apache License 2.0, but links that sentence to the same OFL file.)
+- the Apache License 2.0 is here too, as `LICENSE-APACHE-2.0` (the text of
+  https://www.apache.org/licenses/LICENSE-2.0.txt). Under either reading, the
+  copyright line, the licence text and the statement of what was changed (the
+  image scaled to each size and given a thin white outline, below) are all in
+  this folder.
 
 `scripts/studio_icons.py` scales the image down and gives it a thin white outline,
 so that the dark board still shows on a dark tab or top bar.

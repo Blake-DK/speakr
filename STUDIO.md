@@ -203,6 +203,19 @@ Upstream files the add-on touches, each in one marked block:
   body that includes `templates/studio/main_page.html`, the studio's scripts
   on that page. Upstream offers no hook for a script there: its theme slots
   are inside the Vue app, where a script tag does not run.
+- One marked line each, for "No placeholder speaker" (below), every one a call
+  into `src/studio/speaker_view.py` or `static/js/studio/speaker-view.js`:
+  `src/transcription_prompts.py` (`format_transcription_for_llm`),
+  `src/utils/transcript_render.py` (`render_segments`),
+  `src/services/transcript_segments.py` (`segments_of`),
+  `src/services/recording_chat.py` (`_marked_transcript`: no "Unknown" when no
+  segment has a speaker), `src/api/shares.py` (`public_transcript`),
+  `static/js/app.modular.js` (`displayTranscription`, and the import),
+  `static/js/modules/composables/ui.js` (`getDisplayedTranscription`, and the
+  import), and the Follow player button's `v-if` in
+  `templates/components/detail/desktop-transcription-panel.html` and
+  `mobile-transcript-panel.html` (every timed transcript, not only one with
+  speakers).
 
 Rules:
 
@@ -338,3 +351,50 @@ serves them (a step of `studio-publish.yml`).
 
 Speakr's "What's new" notes are switched off on the site (the system setting
 `show_whats_new`, in the admin page).
+
+## No placeholder speaker
+
+This site's transcriber does not tell voices apart: it labels every segment
+`SPEAKER_00`. Speakr keeps timed segments only when they carry a speaker, so
+the label stays in the stored transcript, and is left out wherever a person
+or a model reads it (`src/studio/speaker_view.py`, and the same rule in
+`static/js/studio/speaker-view.js`):
+
+- The rule: the segments have exactly one distinct speaker, and it is a
+  generic diarization label (upstream's `src/utils/speaker_labels.py`). Two
+  labels (a transcriber that tells voices apart) or any real name: the labels
+  show. Naming a speaker writes the name into the segments, so a named
+  speaker ends the rule. `STUDIO_HIDE_PLACEHOLDER_SPEAKERS=false` switches it
+  all off (default on).
+- Display and read time only: the stored JSON never changes. The main page
+  shows a copy without the speaker, so upstream's own view for a transcript
+  without speakers draws it (timed lines, a click seeks, the Follow player
+  button stays); the segment editor reads and saves the stored JSON, and
+  `static/css/studio/main-page.css` hides its speaker parts for such a
+  transcript. The share page, the downloads and exports, the text the models
+  read (summaries, titles, events, chats, the studio's attachments) and the
+  chat's and search's segments go through the seams listed above.
+- The sidebar's "Needs speakers" filter matches every transcript that carries
+  a diarization label, which here is every recording. So while the setting is
+  on and none of the recordings in the person's list (their own and those
+  shared with them, as the filter itself searches) holds a second label
+  (`SPEAKER_01`), the main page hides it (`hide_needs_speakers`, one `EXISTS`
+  over the transcripts, `static/css/studio/main-page.css`). A transcriber that
+  tells voices apart brings it back by itself. The known gap: a recording with
+  one real name and one `SPEAKER_00`, and no `SPEAKER_01` anywhere, does not
+  bring it back, though it would match.
+- Not changed: summaries written before (they may mention `SPEAKER_00`;
+  writing them again is a person's decision), the Inquire index (Inquire is
+  off here), and upstream's prompts.
+
+## Known upstream test flakes
+
+Upstream tests that fail now and then on GitHub's runners for reasons of
+their own (not the add-on's); re-run the failed job once before looking
+further:
+
+- `tests/test_waveform_peaks.py::test_a_long_computation_answers_202_and_runs_once`:
+  the service writes the peaks file before its `finally` removes the
+  `.lock`, and the test looks for the lock the moment the file is there.
+  Failed on the Tests run of the `v0.11.0-studio.16` tag (1 failed, 6665
+  passed; the same commit was green on `main`) and twice on `3acdb4af`.

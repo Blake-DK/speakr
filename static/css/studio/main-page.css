@@ -1,0 +1,26 @@
+/* The studio add-on on the main page: no placeholder speaker (src/studio/speaker_view.py,
+   static/js/studio/speaker-view.js). Loaded by templates/studio/main_page.html. */
+
+/* The "Needs speakers" filter, while the setting is on and none of the person's recordings holds a
+   second diarization label (src/studio/speaker_view.py, hide_needs_speakers): then it would match
+   every recording of a transcriber that does not tell voices apart. */
+html.studio-hide-needs-speakers button:has(> i.fa-user-edit + span),
+html.studio-hide-needs-speakers [data-phone-needs="speakers"] {
+    display: none !important;
+}
+
+/* While a transcript whose only speaker is a placeholder is shown: the segment editor offers
+   no speaker (no chip on a row, no "Set speaker", no lane name or speaker buttons in the
+   timeline). The segments keep their stored speaker; a save writes it back unchanged. */
+html.studio-placeholder-speakers .asr-seg__chip,
+html.studio-placeholder-speakers [data-asr-action="set-speaker"],
+html.studio-placeholder-speakers [data-asr-action="add-speaker"],
+html.studio-placeholder-speakers [data-asr-action="lane-remove"],
+html.studio-placeholder-speakers [data-asr-lane-suggestion],
+html.studio-placeholder-speakers [data-asr-timeline-matches] {
+    display: none !important;
+}
+html.studio-placeholder-speakers .asr-tl__lane .asr-tl__swatch,
+html.studio-placeholder-speakers .asr-tl__lane .asr-tl__name {
+    visibility: hidden;
+}

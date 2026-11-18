@@ -32,7 +32,8 @@ def _clock(seconds):
 
 
 def _marked_transcript(segments):
-    return '\n'.join(f"[S{seg['index']} {_clock(seg['start_time'])} {seg['speaker'] or 'Unknown'}] {seg['text']}"
+    named = any(seg['speaker'] for seg in segments)  # studio add-on: no "Unknown" when no segment has a speaker
+    return '\n'.join(f"[S{seg['index']} {_clock(seg['start_time'])}{' ' + (seg['speaker'] or 'Unknown') if named else ''}] {seg['text']}"
                      for seg in segments)
 
 
@@ -67,6 +68,9 @@ def _duration(seconds):
 
 def _speakers(segments):
     """Speaker names in the order they first speak."""
+    from src.studio.speaker_view import hides as _studio_hides  # studio add-on: no placeholder speaker
+    if _studio_hides(segments):  # studio add-on: no "Speakers: SPEAKER_00" for the model
+        return []
     names = []
     for seg in segments or ():
         name = (seg.get('speaker') or '').strip()
@@ -187,6 +191,8 @@ def build_chat_messages(recording, user, message, history=None, with_sources=Fal
     segments = None
     if with_sources:
         segments = recording.segments() if isinstance(recording, IncognitoTranscript) else canonical_segments(recording)
+        from src.studio.speaker_view import blanked as _studio_blanked  # studio add-on: no placeholder speaker
+        segments = _studio_blanked(segments)  # studio add-on: in the marked transcript and the citations
     use_markers = bool(segments)
     include_timestamps = bool(getattr(user, 'chat_include_timestamps', False)) and not use_markers
     if use_markers:

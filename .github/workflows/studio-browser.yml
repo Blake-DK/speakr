@@ -1,0 +1,66 @@
+# The studio add-on's own browser tests, on every push to main: Speakr from
+# source in headless Chromium, set up as upstream's browser-smoke job in
+# test.yml (which this fork does not edit), running the add-on's tests under
+# tests/e2e/ (test_studio_*_ui.py) against the seeded recordings.
+#
+# GitHub-hosted runners only.
+
+name: Studio browser tests
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  studio-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: pip install --require-hashes --no-deps -r requirements.lock -r requirements-dev.lock
+
+      - name: Download vendor files as the image build does
+        run: PRODUCTION=1 python scripts/download_offline_deps.py
+
+      - name: Cache the Tailwind CLI
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v6.1.0
+        with:
+          path: .cache/tailwindcss
+          key: tailwindcss-${{ runner.os }}-${{ hashFiles('scripts/build_css.sh') }}
+
+      - name: Build the Tailwind stylesheet as the image build does
+        run: scripts/build_css.sh
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Start Speakr (config/env.whisperx.example)
+        run: |
+          python tests/e2e/run_speakr.py --port 8899 --workdir /tmp/speakr-smoke > /tmp/speakr.log 2>&1 &
+          for i in $(seq 1 90); do curl -fs -o /dev/null http://127.0.0.1:8899/login && break; sleep 2; done
+          curl -fs -o /dev/null http://127.0.0.1:8899/login
+
+      - name: The studio's browser tests
+        env:
+          SPEAKR_BROWSER_SMOKE: '1'
+          SPEAKR_BASE_URL: http://127.0.0.1:8899
+        run: pytest tests/e2e/test_studio_placeholder_speakers_ui.py -q -p no:cacheprovider --noconftest -rs
+
+      - name: Speakr log
+        if: always()
+        run: tail -n 200 /tmp/speakr.log || true

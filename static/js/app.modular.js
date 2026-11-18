@@ -4,6 +4,7 @@ const { createApp, ref, reactive, computed, onMounted, onUnmounted, watch, nextT
 import { useRecordings } from './modules/composables/recordings.js';
 import { resolveInitialSort } from './modules/utils/sort-preference.js';
 import { releasesToShow, releaseVersion } from './modules/utils/whats-new.js';
+import { displayedTranscript as studioDisplayedTranscript } from './studio/speaker-view.js';  // studio add-on: no placeholder speaker (src/studio/speaker_view.py)
 import { useUpload } from './modules/composables/upload.js';
 import { useAudio } from './modules/composables/audio.js';
 import { useUI } from './modules/composables/ui.js';
@@ -2370,10 +2371,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const displayTranscription = computed(() => {
                 if (!selectedRecording.value) return '';
+                // studio add-on: the shown copy has no placeholder speaker; the stored one is untouched
                 if (viewingTranslation.value) {
-                    return selectedRecording.value.transcription_translation || '';
+                    return studioDisplayedTranscript(selectedRecording.value.transcription_translation || '');
                 }
-                return selectedRecording.value.transcription || '';
+                return studioDisplayedTranscript(selectedRecording.value.transcription || '');
             });
 
             const translationJob = computed(() => {
