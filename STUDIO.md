@@ -193,7 +193,8 @@ site running this code can get its source.
 
 Upstream files the add-on touches, each in one marked block:
 
-- `src/app.py`: registers the studio blueprint;
+- `src/app.py`: registers the studio blueprint, and replaces upstream's
+  `_app_version` with the asset version (see "The asset version" below);
 - `src/models/__init__.py`: imports `src.studio.models`;
 - `templates/components/header-controls.html`: the Projects button;
 - `templates/index.html` (Speakr's main page): one line at the end of the
@@ -231,3 +232,42 @@ Rules:
   `v0.11.0-studio.1`. The tag starts `studio-publish.yml`, which publishes
   `ghcr.io/<owner>/speakr-studio:<version>` and
   `ghcr.io/<owner>/speakr-whisper-arc:<version>` from GitHub-hosted runners.
+- After each deploy, the pages are looked at in a browser that already
+  holds the files of the release before (any browser that has used the
+  site), because checks made from the server cannot see what a browser's
+  stored files do to a new page. In that browser, at about 1280 px and at
+  390 px wide: Projects, each tab of a project, one chat and one document
+  opened (nothing sent or saved), Chat settings, `/` and `/account`. For
+  each: no error from the site's own scripts in the console, no element
+  marked hidden that shows, no string key in the text, no sideways scroll,
+  and the project's name on one line where it fits. On a project page, every
+  `/static/` script and stylesheet should equal the server's copy: fetch it
+  as the page has it, and once more with another `v` and
+  `cache: 'no-store'` (the worker lets that through), and compare.
+
+## The asset version
+
+Upstream's templates put `app_version` on every script and stylesheet
+(`?v=`), on the service worker's address (`/sw.js?v=`) and on the locale
+files. Upstream's service worker (`static/sw.js`) answers a static file whose
+`v` is its own from the browser's Cache Storage and never asks the server
+again until the version changes. Upstream changes VERSION with every
+release; the fork does not (all studio releases of one upstream release
+carry the same VERSION), so a browser would keep running the scripts of the
+first studio release it saw against the pages of a later one.
+
+So `src/app.py` (the studio block) sets `_app_version` to upstream's version
+followed by 12 hex digits of a SHA-256 over every file under `static/` as it
+is in the running image, the stylesheet compiled at build time included, for
+example `v0.11.0-1a2b3c4d5e6f` (`src/studio/asset_version.py`). It is
+computed once per process at start-up and logged ("Static asset version").
+It changes with every image whose static files differ, and it is the same
+in every worker and after every restart. Upstream's worker and its page
+side are not changed. What's new, the About page and the API's version
+fields still use upstream's version (`get_version()`).
+
+A page of the new release asks for its files with the new `v`. A worker of
+an earlier release lets those requests through to the server and stores
+nothing; the new worker is registered at the next visit to a page that
+registers it (`/`, the account, admin, group admin and Inquire pages) and
+deletes the caches of every other version.

@@ -1250,6 +1250,11 @@ csrf.exempt(_share_target_view)
 # --- studio add-on (this fork only; see src/studio/__init__.py) ---
 from src.studio import studio_bp
 app.register_blueprint(studio_bp)
+# The version on static files, the worker's address and the locale files
+# (inject_app_version above): upstream's version and a hash of static/, so
+# that it changes with every image (src/studio/asset_version.py).
+from src.studio.asset_version import asset_version as _studio_asset_version
+_app_version = _studio_asset_version(app.static_folder, _app_version)
 # --- end studio add-on ---
 
 # File monitor and scheduler initialization functions below

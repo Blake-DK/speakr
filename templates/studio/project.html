@@ -81,16 +81,18 @@
                 <header class="p-4 sm:p-6 border-b border-[var(--border-primary)]">
                     <div class="flex flex-wrap items-start justify-between gap-2">
                         <!-- The project switcher (static/js/studio/switcher.js): the name opens the
-                             person's projects, the most recently opened first. -->
+                             person's projects, the most recently opened first. The button has no
+                             max-width: with its negative margin, max-w-full made the name wrap
+                             8 px too early. overflow-wrap:anywhere keeps a long name inside the card. -->
                         <div class="relative min-w-0" data-studio-switcher @keydown="switcher.onKeydown">
                             <h2 class="text-2xl font-semibold text-[var(--text-primary)] min-w-0">
                                 <button type="button" data-studio-switcher-button
-                                        class="inline-flex items-center gap-2 max-w-full text-left rounded-md px-1 -mx-1 hover:bg-[var(--bg-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-focus)]"
+                                        class="inline-flex items-center gap-2 text-left rounded-md px-1 -mx-1 hover:bg-[var(--bg-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-focus)]"
                                         aria-haspopup="listbox" aria-controls="studio-switcher-panel"
                                         :aria-expanded="switcher.open ? 'true' : 'false'"
                                         :title="st('studio.switcher.button')"
                                         @click="switcher.toggle">
-                                    <span class="break-words min-w-0" data-studio-project-name v-text="project.name"></span>
+                                    <span class="[overflow-wrap:anywhere] min-w-0" data-studio-project-name v-text="project.name"></span>
                                     <i class="fas fa-chevron-down text-base text-[var(--text-muted)] shrink-0 transition-transform"
                                        :class="switcher.open ? 'rotate-180' : ''" aria-hidden="true"></i>
                                     <span class="sr-only" v-text="st('studio.switcher.button')"></span>
@@ -263,7 +265,9 @@
                             </button>
                             <p class="mt-2 text-xs text-[var(--text-muted)]" v-text="st('studio.project.recordings.addHint')"></p>
                             <p class="text-xs text-[var(--text-muted)] hidden sm:block" v-text="st('studio.project.recordings.dropHere')"></p>
-                            <input ref="recordingInput" type="file" class="hidden" accept="audio/*,video/*" multiple
+                            <!-- !hidden on the three file choosers: the UI themes cards, focus and workspace
+                                 give every input of the page display:block. -->
+                            <input ref="recordingInput" type="file" class="!hidden" accept="audio/*,video/*" multiple
                                    @change="onRecordingFiles">
                         </div>
                         <ul v-if="uploads.length" class="mb-4 space-y-1 text-sm" aria-live="polite">
@@ -319,7 +323,7 @@
                             <p class="mt-1 text-xs text-[var(--text-muted)]" v-text="st('studio.project.materials.accepted')"></p>
                             <p v-if="imageUnavailable" class="mt-1 text-xs text-[var(--text-muted)]" data-studio-image-unavailable
                                v-text="imageUnavailable"></p>
-                            <input ref="materialInput" type="file" class="hidden" multiple
+                            <input ref="materialInput" type="file" class="!hidden" multiple
                                    accept=".pdf,.pptx,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/png,image/jpeg,image/webp,image/gif"
                                    @change="onMaterialFiles">
                         </div>
@@ -426,7 +430,7 @@
                                 <div class="flex flex-wrap gap-2">
                                     <button type="submit" class="btn" :disabled="!voiceForm.text.trim() || voiceBusy" v-text="st('studio.common.add')"></button>
                                     <button type="button" class="btn btn--ghost" @click="pickVoiceFile" v-text="st('studio.project.voice.loadFile')"></button>
-                                    <input ref="voiceFileInput" type="file" class="hidden" accept=".txt,.md,.srt,.vtt,text/plain" @change="onVoiceFile">
+                                    <input ref="voiceFileInput" type="file" class="!hidden" accept=".txt,.md,.srt,.vtt,text/plain" @change="onVoiceFile">
                                 </div>
                             </form>
                         </div>
