@@ -50,25 +50,29 @@ def test_signed_out_visitors_are_sent_to_the_login_page():
     assert '/login' in response.headers['Location']
 
 
-def test_the_projects_page_shows_the_empty_state_and_the_source_link(user):
+def test_the_projects_page_shows_the_empty_state_under_the_apps_name(user):
     response = _client(user).get('/studio')
     assert response.status_code == 200
     page = response.get_data(as_text=True)
     assert 'data-studio-projects' in page
     assert 'data-studio-empty' in page
     assert "st('studio.projects.empty')" in page
-    # The embedded strings and the AGPL source link.
+    # The embedded strings.
     assert '"No projects yet."' in page
-    assert json.dumps(DEFAULT_SOURCE_URL) in page
-    # The shared header, labelled with the page's title.
+    # The shared header, labelled with the page's title; the app's name in the tab's title.
     assert 'id="global-header"' in page
-    assert '<title>Projects - Speakr</title>' in page
+    assert '<title>Projects - ScriptBot</title>' in page
+    # The source link is in About and on the share page now (src/studio/rebrand.py), not in a foot here.
+    assert 'data-studio-source' not in page
+    assert json.dumps(DEFAULT_SOURCE_URL) not in page
 
 
-def test_the_source_link_can_point_elsewhere(user, monkeypatch):
+def test_the_source_link_can_point_elsewhere(monkeypatch):
+    from flask import render_template
     monkeypatch.setenv('STUDIO_SOURCE_URL', 'https://example.com/source.git')
-    page = _client(user).get('/studio').get_data(as_text=True)
-    assert '"https://example.com/source.git"' in page
+    with app.test_request_context('/'):
+        html = render_template('studio/about_licence.html')
+    assert 'href="https://example.com/source.git"' in html
 
 
 def _projects_button(page):

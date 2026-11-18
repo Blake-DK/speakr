@@ -116,3 +116,12 @@ def test_the_compiled_stylesheet_has_the_classes_for_phone_width():
     for rule in (r'\.basis-full\{flex-basis:100%\}', r'\.sm\\:basis-0\{flex-basis:0(px)?\}', r'\.sm\\:w-auto\{width:auto\}',
                  r'\.min-h-32\{min-height:8rem\}', r'\.flex-auto\{flex:11auto\}', r'\.min-h-0\{min-height:0(px)?\}'):
         assert re.search(rule, css), rule
+
+
+def test_the_project_card_is_never_wider_than_the_page(page):
+    """Under the theme "workspace" main does not stretch its children; without max-w-full the card was as
+    wide as its tab strip (min-w-max) and the page scrolled sideways at phone width."""
+    card = page.find(lambda n: 'data-studio-project-card' in n.attrs)
+    assert len(card) == 1 and 'max-w-full' in card[0].classes
+    strip = card[0].find(lambda n: n.attrs.get('role') == 'tablist')
+    assert strip and 'min-w-max' in strip[0].classes

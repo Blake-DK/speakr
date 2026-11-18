@@ -8,7 +8,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
-    <title>{{ page_title }} - Speakr</title>
+    <title>{{ page_title }} - {{ studio_app_name }}</title>
 
     <!-- Loading overlay to prevent FOUC - MUST be first -->
     {% include 'includes/loading_overlay.html' %}
@@ -44,7 +44,7 @@
         window.__STUDIO_I18N = {{ studio_strings|tojson }};
         window.__STUDIO_PAGE = {
             userLanguage: {{ user_language|tojson }},
-            sourceUrl: {{ studio_source_url|tojson }},
+            appName: {{ studio_app_name|tojson }},
             projectId: {{ studio_project_id|tojson }}
         };
     </script>
@@ -77,7 +77,9 @@
                 </div>
             </div>
 
-            <div v-else-if="project" class="bg-[var(--bg-secondary)] rounded-xl shadow-lg border border-[var(--border-primary)]">
+            <!-- max-w-full: under the theme "workspace", main does not stretch its children, and the card would be
+                 as wide as its tab strip (min-w-max) and push the page sideways at phone width. -->
+            <div v-else-if="project" class="bg-[var(--bg-secondary)] rounded-xl shadow-lg border border-[var(--border-primary)] max-w-full" data-studio-project-card>
                 <header class="p-4 sm:p-6 border-b border-[var(--border-primary)]">
                     <div class="flex flex-wrap items-start justify-between gap-2">
                         <!-- The project switcher (static/js/studio/switcher.js): the name opens the
@@ -804,7 +806,7 @@
                                         <i class="fas fa-xmark" aria-hidden="true"></i>
                                     </button>
                                 </div>
-                                <!-- The footer sits outside the scrolling body, as in Speakr's own dialogs, so Close
+                                <!-- The footer sits outside the scrolling body, as in upstream's own dialogs, so Close
                                      and Save stay in view; the text field shrinks to what is left (at least 8rem). -->
                                 <form class="flex flex-col flex-auto min-h-0" @submit.prevent="docs.save">
                                     <div class="modal-body flex flex-col gap-3">
@@ -902,14 +904,6 @@
             </div>
         </main>
 
-        <footer class="mt-8 text-center text-xs text-[var(--text-muted)]" data-studio-source>
-            <p v-text="st('studio.projects.sourceCodeHint')"></p>
-            <a :href="sourceUrl" target="_blank" rel="noopener noreferrer"
-               class="inline-flex items-center gap-1 mt-1 text-[var(--text-accent)] hover:underline">
-                <i class="fas fa-code" aria-hidden="true"></i>
-                <span v-text="st('studio.projects.sourceCode')"></span>
-            </a>
-        </footer>
     </div>
 
     <script src="{{ url_for('static', filename='js/studio/strings.js', v=app_version) }}"></script>

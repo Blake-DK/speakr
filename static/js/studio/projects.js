@@ -100,7 +100,6 @@
                 return {
                     st, loading, loadError, projects, hasProjects, showForm, form, formError, creating,
                     nameInput, load, openForm, closeForm, create, counts,
-                    sourceUrl: page.sourceUrl || '',
                 };
             },
             delimiters: ['${', '}'],

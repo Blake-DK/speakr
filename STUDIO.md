@@ -187,7 +187,9 @@ site running this code can get its source.
 | `static/locales-studio/` | the add-on's interface strings |
 | `tests/studio/` | the add-on's tests (run with upstream's suite) |
 | `whisper/` | the transcription service |
-| `Dockerfile.studio` | the app image: upstream's lite image + the add-on's extras |
+| `Dockerfile.studio` | the app image: upstream's lite image + the add-on's extras, and the name rewritten (below) |
+| `src/studio/brand.py`, `src/studio/rebrand.py`, `src/studio/icons/` | the name ScriptBot, the source link, and the rewrite of upstream's files in the image (see "The name") |
+| `scripts/studio_icons.py` | draws `src/studio/icons/` |
 | `requirements-studio.txt` | the add-on's own Python packages, pinned with hashes |
 | `.github/workflows/studio-publish.yml` | builds and publishes both images |
 
@@ -206,6 +208,8 @@ Rules:
 
 - No column on an upstream table; studio tables point at upstream rows by id.
 - No other upstream file is edited, upstream's locale files and workflows included.
+  The image's copy of upstream's files is rewritten for the name (see "The
+  name"); this repository's copy never is.
 - Studio strings are looked up with `st()` / `studio_t()`, never `t()`:
   upstream's tests read every `t('...')` call as a key of upstream's locale files.
 - `db.create_all()` creates the studio tables but never changes one that
@@ -250,6 +254,10 @@ Rules:
   `/static/` script and stylesheet should equal the server's copy: fetch it
   as the page has it, and once more with another `v` and
   `cache: 'no-store'` (the worker lets that through), and compare.
+  On every page of the pass, at both widths: the tab's title and the
+  visible text hold no "Speakr" (About's licence line excepted) and the
+  page holds no link to github.com (that line's and the share page's
+  Source code link excepted).
 
 ## The asset version
 
@@ -269,11 +277,60 @@ example `v0.11.0-1a2b3c4d5e6f` (`src/studio/asset_version.py`). It is
 computed once per process at start-up and logged ("Static asset version").
 It changes with every image whose static files differ, and it is the same
 in every worker and after every restart. Upstream's worker and its page
-side are not changed. What's new, the About page and the API's version
-fields still use upstream's version (`get_version()`).
+side are not changed. What's new and the API's version fields still use
+upstream's version (`get_version()`); the About tab shows the studio release
+(see "The name").
 
 A page of the new release asks for its files with the new `v`. A worker of
 an earlier release lets those requests through to the server and stores
 nothing; the new worker is registered at the next visit to a page that
 registers it (`/`, the account, admin, group admin and Inquire pages) and
 deletes the caches of every other version.
+
+## The name
+
+The app is called ScriptBot where a person reads its name; Speakr is named
+once, in the About tab's licence line, beside the one link to this fork's
+source code (what the AGPL asks of a changed version that people use over a
+network). Upstream's files in this repository keep upstream's text, so every
+upstream release merges and upstream's tests read what they expect.
+`Dockerfile.studio` runs `src/studio/rebrand.py` over the image's copy instead
+(`python -I src/studio/rebrand.py /app`):
+
+- The edits: the About tab's "Project links" (GitHub, Docker Hub,
+  documentation) give way to `templates/studio/about_licence.html`; the
+  transcript templates' help link into Speakr's documentation site goes; the
+  share page's foot becomes `templates/studio/share_foot.html` (one small
+  Source code link: a public share link is opened by people who are not
+  signed in and cannot reach About); the version line in page feet loses
+  Speakr's version; the About tab shows the studio release; the export foot
+  reads "Generated with ScriptBot", without a link; the manifest offers no
+  screenshots of Speakr. Each edit must match exactly as often as the script
+  lists, or the build stops: an upstream release that moves one is noticed.
+- The name: the word Speakr where a person reads it, in upstream's templates,
+  locale files, manifest, service worker, scripts and stylesheets, and in the
+  Python files that write text for people (mail, exports, the assistant's
+  introduction, the API's documentation page). Never inside a longer name in
+  code (`window.SpeakrOrganizer`), a header name (`Speakr-Signature`), an
+  address or a storage key. Left as upstream wrote them, because nobody reads
+  them in the app: the request headers to the model and speech providers
+  (`User-Agent`, `X-Title`, `HTTP-Referer` in `src/services/llm.py`,
+  `src/config/app_config.py` and the connectors; no setting changes them),
+  webhook header names, the calendar file's `PRODID`, log lines, and the
+  identifiers, image, stack, container and address names.
+- The icons: `src/studio/icons/` (the letters SB on the accent blue, drawn
+  by `scripts/studio_icons.py`) replace Speakr's under `static/img/`.
+- The studio's own pages take the name from `src/studio/brand.py`.
+
+The script lists what it changed in `/app/studio-rebrand.json` and prints it
+in the build log. `STUDIO_APP_NAME` (a build argument, default ScriptBot; the
+image carries it in its environment for the studio's own pages) is the name;
+a new name needs a new image. `STUDIO_RELEASE` is set by `studio-publish.yml`
+to the release, for the About tab and the source link (the release's tag).
+`tests/studio/test_rebrand.py` checks the rewrite on a copy in every test run;
+`tests/studio/test_served_name.py` checks every page, locale file, script,
+the manifest, the offline page, an export and a mail as the built image
+serves them (a step of `studio-publish.yml`).
+
+Speakr's "What's new" notes are switched off on the site (the system setting
+`show_whats_new`, in the admin page).

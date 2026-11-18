@@ -1,0 +1,7 @@
+{# studio add-on: the share page's foot. src/studio/rebrand.py writes the include in place of
+   upstream's foot (the © line and "Built with Speakr" linking to GitHub) when the image is built.
+   People who open a public share link are not signed in and cannot reach About, so this foot keeps
+   the one link to the source code that the AGPL asks for. #}
+<div class="max-w-4xl mx-auto flex items-center justify-center text-xs text-[var(--text-muted)]" data-studio-share-foot>
+    <a href="{{ studio_source_link }}" target="_blank" rel="noopener noreferrer" class="hover:text-[var(--text-primary)] transition-colors" data-studio-source-link>{{ studio_t('studio.brand.sourceCode') }}</a>
+</div>

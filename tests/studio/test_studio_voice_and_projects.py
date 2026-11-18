@@ -100,7 +100,7 @@ def test_the_project_pages_render(world):
     page = world.client(owner).get(f'/studio/projects/{project_id}')
     assert page.status_code == 200
     html = page.get_data(as_text=True)
-    assert '<title>Rendered film - Speakr</title>' in html
+    assert '<title>Rendered film - ScriptBot</title>' in html
     assert 'data-studio-project' in html and f'projectId: {project_id}' in html
     assert 'js/studio/project.js' in html and 'js/app-dialog.js' in html
     listed = world.client(owner).get('/studio').get_data(as_text=True)

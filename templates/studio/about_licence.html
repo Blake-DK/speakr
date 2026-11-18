@@ -1,0 +1,8 @@
+{# studio add-on: the About tab's licence line. src/studio/rebrand.py writes the include in place of
+   upstream's "Project links" (GitHub, Docker Hub, documentation) when the image is built. The one place
+   where the name Speakr and a link to the code remain: what the AGPL asks of a changed version that
+   people use over a network (section 13), and the legal notice of section 5. #}
+<div class="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-5 text-sm text-[var(--text-secondary)]" data-studio-licence>
+    {{ studio_message('studio.brand.licence', name=studio_app_name) }}
+    <a href="{{ studio_source_link }}" target="_blank" rel="noopener noreferrer" class="text-[var(--text-accent)] hover:underline" data-studio-source-link>{{ studio_t('studio.brand.sourceOfThisVersion') }}</a>.
+</div>

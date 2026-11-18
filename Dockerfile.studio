@@ -38,6 +38,19 @@ RUN pip install --no-cache-dir --require-hashes --no-deps -r /tmp/requirements-s
 # upstream's "COPY . ." picks it up, but the app does not use it.
 RUN rm -rf /app/whisper
 
+# ScriptBot instead of Speakr, in the image's copy of upstream's files: the name
+# a person reads, the links to Speakr's GitHub and documentation, the version
+# line, the icons (src/studio/rebrand.py; the repository's copy stays as upstream
+# wrote it). It lists every file it changed in /app/studio-rebrand.json, and stops
+# the build when an upstream release has moved one of the places it edits.
+# STUDIO_RELEASE (set by studio-publish.yml) is the release the About tab shows
+# and the source link points at. Last, so that the layers above stay cached.
+ARG STUDIO_APP_NAME=ScriptBot
+ARG STUDIO_RELEASE=
+ENV STUDIO_APP_NAME=${STUDIO_APP_NAME} \
+    STUDIO_RELEASE=${STUDIO_RELEASE}
+RUN python -I /app/src/studio/rebrand.py /app
+
 LABEL org.opencontainers.image.title="Speakr with the studio add-on" \
       org.opencontainers.image.description="Speakr plus the studio add-on of this fork" \
       org.opencontainers.image.source="https://github.com/Blake-DK/speakr" \

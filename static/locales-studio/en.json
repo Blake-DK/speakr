@@ -20,6 +20,11 @@
       "you": "you",
       "loadFailed": "This could not be loaded. Check your connection and try again."
     },
+    "brand": {
+      "licence": "{{name}} is built on Speakr, free software under the GNU Affero General Public License v3.",
+      "sourceOfThisVersion": "Source code of this version",
+      "sourceCode": "Source code"
+    },
     "projects": {
       "title": "Projects",
       "empty": "No projects yet.",
@@ -38,8 +43,6 @@
       "counts": "{{recordings}} recordings · {{materials}} materials",
       "countsHiddenAll": "{{count}} recordings, owned by {{owners}}; you cannot open them · {{materials}} materials",
       "countsHiddenSome": "{{recordings}} recordings, and {{count}} owned by {{owners}} that you cannot open · {{materials}} materials",
-      "sourceCode": "Source code",
-      "sourceCodeHint": "This site runs a modified version of Speakr. Its source code is published under the GNU AGPL v3.",
       "allRecordings": "All recordings",
       "chatSettings": "Chat settings"
     },
@@ -215,7 +218,7 @@
       "none": "This browser cannot record sound from a shared screen or tab. Use Chrome or Edge, or record from the microphone.",
       "noSwitch": "Without the audio switch, no sound is recorded.",
       "video": "If Also record video is ticked, what you share is saved as video too.",
-      "guide": "If no sound comes through, Speakr opens its full guide.",
+      "guide": "If no sound comes through, the full guide opens.",
       "dontShow": "Don't show this again",
       "continue": "Continue",
       "cancel": "Cancel"

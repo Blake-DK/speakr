@@ -54,6 +54,7 @@ jobs:
       - name: Build the studio image on top
         run: |
           docker build -f Dockerfile.studio --build-arg BASE_IMAGE=speakr-base:lite \
+            --build-arg STUDIO_RELEASE=${{ steps.meta.outputs.version }} \
             --label org.opencontainers.image.version=${{ steps.meta.outputs.version }} \
             --label org.opencontainers.image.revision=${GITHUB_SHA} \
             -t speakr-studio:ci .
@@ -65,6 +66,7 @@ jobs:
           for i in $(seq 1 90); do curl -fs -o /dev/null http://127.0.0.1:8899/login && break; sleep 2; done
           curl -fs -o /dev/null http://127.0.0.1:8899/login
           test "$(curl -fs http://127.0.0.1:8899/api/studio/health)" = '{"status":"ok"}'
+          curl -fs http://127.0.0.1:8899/login | grep -q '<title>[^<]* - ScriptBot</title>'
           code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8899/studio)"
           test "$code" = "302"
 
@@ -79,6 +81,15 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/repo -w /repo -e PYTHONDONTWRITEBYTECODE=1 --entrypoint sh speakr-studio:ci -c \
             'pip install -q --disable-pip-version-check pytest==9.2.0 && python -c "import pptx" && python -m pytest tests/studio -q -p no:cacheprovider -rs'
+
+      # What the image serves: the name ScriptBot, no Speakr, no link to GitHub but
+      # the licence's (src/studio/rebrand.py). Run in /app, against the app's files as
+      # the build rewrote them, not the checkout's; tests/ is mounted there.
+      - name: Served text says ScriptBot (inside the image)
+        run: |
+          docker run --rm -v "$PWD/tests":/app/tests:ro -w /app -e PYTHONDONTWRITEBYTECODE=1 -e STUDIO_SERVED_CHECK=1 \
+            --entrypoint sh speakr-studio:ci -c \
+            'pip install -q --disable-pip-version-check pytest==9.2.0 && python -m pytest tests/studio/test_served_name.py tests/studio/test_asset_version.py -q -p no:cacheprovider -rs'
 
       # The app runs as a user without a writable home. A PDF rendered that way
       # must find the image's font cache valid and print nothing; a stale cache

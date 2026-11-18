@@ -6,8 +6,6 @@ through ``access.project_for``; a person who may not see the project gets
 access.py, sharing.py, projects.py, materials.py and voice.py.
 """
 
-import os
-
 from flask import Blueprint, abort, jsonify, render_template, request
 from flask_login import current_user, login_required
 
@@ -15,16 +13,9 @@ from src.database import db
 from src.studio import access, admin_access, landing, materials, projects, sharing, voice
 from src.studio.i18n import studio_message, studio_strings, studio_strings_for, studio_t, user_language
 
+from src.studio.brand import DEFAULT_SOURCE_URL, app_name, release, source_link, source_url  # noqa: F401
+
 studio_bp = Blueprint('studio', __name__)
-
-# Where the people who use this site can get its source code, as the AGPL asks
-# of a modified version that is offered over a network. STUDIO_SOURCE_URL
-# overrides it for a copy published somewhere else.
-DEFAULT_SOURCE_URL = 'https://github.com/Blake-DK/speakr'
-
-
-def source_url():
-    return os.environ.get('STUDIO_SOURCE_URL', '').strip() or DEFAULT_SOURCE_URL
 
 
 def _apply_schema_steps(state):
@@ -58,8 +49,11 @@ admin_access.register(studio_bp)
 @studio_bp.app_context_processor
 def inject_studio_helpers():
     """``studio_t`` for every template, so shared parts such as the header can label studio links;
-    ``studio_strings_for`` for templates/studio/main_page.html on Speakr's main page."""
-    return {'studio_t': studio_t, 'studio_strings_for': studio_strings_for}
+    ``studio_strings_for`` for templates/studio/main_page.html on Speakr's main page; the app's name,
+    the release and the source link for the studio's pages and for what src/studio/rebrand.py writes
+    into upstream's (the About tab's licence line, the share page's foot)."""
+    return {'studio_t': studio_t, 'studio_message': studio_message, 'studio_strings_for': studio_strings_for,
+            'studio_app_name': app_name(), 'studio_release': release(), 'studio_source_link': source_link()}
 
 
 def _error(key, status, **params):
@@ -77,7 +71,6 @@ def _page(template, title, **extra):
         user_language=language,
         page_title=title,
         studio_strings=studio_strings(language),
-        studio_source_url=source_url(),
         **extra,
     )
 

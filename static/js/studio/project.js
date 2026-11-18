@@ -90,7 +90,7 @@
                     if (res.ok && res.data) {
                         project.value = res.data;
                         editing.value = false;
-                        document.title = `${res.data.name} - Speakr`;
+                        document.title = `${res.data.name} - ${page.appName || 'ScriptBot'}`;
                         if (body.name !== undefined) switcher.load();  // the new name in the switcher too
                     } else {
                         say(errorOf(res), true);
@@ -622,7 +622,6 @@
                     addVoiceFromRecording, addVoiceText, pickVoiceFile, onVoiceFile, voiceSource, toggleVoiceText, deleteVoice,
                     peopleDraft, peopleQuery, peopleResults, peopleSearching, peopleSaving, peopleError, peopleChanged,
                     scopeHint, addPerson, removePerson, savePeople, resetPeopleDraft,
-                    sourceUrl: page.sourceUrl || '',
                 };
             },
             delimiters: ['${', '}'],

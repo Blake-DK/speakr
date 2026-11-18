@@ -8,7 +8,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
-    <title>{{ page_title }} - Speakr</title>
+    <title>{{ page_title }} - {{ studio_app_name }}</title>
 
     <!-- Loading overlay to prevent FOUC - MUST be first -->
     {% include 'includes/loading_overlay.html' %}
@@ -42,7 +42,7 @@
         window.__STUDIO_I18N = {{ studio_strings|tojson }};
         window.__STUDIO_PAGE = {
             userLanguage: {{ user_language|tojson }},
-            sourceUrl: {{ studio_source_url|tojson }}
+            appName: {{ studio_app_name|tojson }}
         };
     </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css', v=app_version) }}">

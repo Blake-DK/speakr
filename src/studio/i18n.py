@@ -99,12 +99,20 @@ def studio_message(key, language=None, **params):
     return text
 
 
+# Sections used only on the server, never embedded in a page: "brand" holds the About tab's licence
+# line, the one place where the name Speakr may appear (templates/studio/about_licence.html).
+SERVER_ONLY = ('brand',)
+
+
 def studio_strings(language=None):
     """All studio strings for ``language``, English filling the gaps; embedded in studio pages."""
     language = language or user_language()
     strings = _load(FALLBACK_LOCALE)
     if language != FALLBACK_LOCALE:
         strings = _merge(strings, _load(language))
+    table = strings.get('studio')
+    if isinstance(table, dict) and any(name in table for name in SERVER_ONLY):
+        strings = {**strings, 'studio': {k: v for k, v in table.items() if k not in SERVER_ONLY}}
     return strings
 
 
