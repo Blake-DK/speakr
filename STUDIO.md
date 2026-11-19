@@ -279,6 +279,12 @@ Rules:
   `/static/` script and stylesheet should equal the server's copy: fetch it
   as the page has it, and once more with another `v` and
   `cache: 'no-store'` (the worker lets that through), and compare.
+  With the chat's context bar open and one long-titled recording attached
+  to an unsent message, at about 1700, 1270 and 390 px: no studio element
+  whose text is wider than its box unless the box cuts it off on purpose
+  (an ellipsis or an overflow of its own), and no two items of a list whose
+  boxes overlap; the attached item is taken off again and nothing is sent
+  (tests/e2e/test_studio_layout_ui.py does the same on made-up data).
   On every page of the pass, at both widths: the tab's title and the
   visible text hold no "Speakr" (About's licence line excepted) and the
   page holds no link to github.com (that line's and the share page's

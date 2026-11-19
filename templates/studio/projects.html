@@ -128,8 +128,8 @@
                                 <span v-else-if="project.shared" class="chip shrink-0" v-text="st('studio.projects.shared')"></span>
                             </span>
                             <span v-if="project.logline" class="block mt-1 text-sm text-[var(--text-secondary)] line-clamp-2" v-text="project.logline"></span>
-                            <span class="block mt-3 text-xs text-[var(--text-muted)]" v-text="counts(project)"></span>
-                            <span v-if="project.role !== 'owner' && project.owner_name" class="block mt-1 text-xs text-[var(--text-muted)]"
+                            <span class="block mt-3 text-xs text-[var(--text-muted)] [overflow-wrap:anywhere]" v-text="counts(project)"></span>
+                            <span v-if="project.role !== 'owner' && project.owner_name" class="block mt-1 text-xs text-[var(--text-muted)] [overflow-wrap:anywhere]"
                                   v-text="st('studio.projects.owner', { name: project.owner_name })"></span>
                         </a>
                     </li>

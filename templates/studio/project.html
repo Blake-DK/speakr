@@ -345,7 +345,7 @@
                                     <i v-else :class="materialIcon(material)" class="text-3xl w-14 text-center text-[var(--text-muted)] shrink-0" aria-hidden="true"></i>
                                     <div class="min-w-0 flex-1">
                                         <p class="font-medium break-words" v-text="material.name"></p>
-                                        <p class="text-xs text-[var(--text-muted)]">
+                                        <p class="text-xs text-[var(--text-muted)] [overflow-wrap:anywhere]">
                                             <span v-text="st('studio.project.materials.kinds.' + material.kind)"></span>
                                             <span v-text="' · ' + materialMeta(material)"></span>
                                         </p>
@@ -445,7 +445,7 @@
                                 <div class="flex flex-wrap items-start justify-between gap-2">
                                     <div class="min-w-0 flex-1">
                                         <p class="font-medium break-words" v-text="item.title"></p>
-                                        <p class="text-xs text-[var(--text-muted)]">
+                                        <p class="text-xs text-[var(--text-muted)] [overflow-wrap:anywhere]">
                                             <a v-if="item.source === 'recording' && item.recording_title" :href="'/recordings/' + item.recording_id"
                                                class="text-[var(--text-accent)] hover:underline" v-text="voiceSource(item)"></a>
                                             <span v-else v-text="voiceSource(item)"></span>
@@ -619,15 +619,18 @@
                                 <p v-if="!chat.contextItems().length" class="text-sm text-[var(--text-muted)]" v-text="st('studio.chat.contextEmpty')"></p>
                                 <template v-else>
                                     <p class="text-xs text-[var(--text-muted)] mb-2" v-text="st('studio.chat.contextHint')"></p>
-                                    <div class="flex flex-wrap gap-2">
-                                        <button v-for="item in chat.contextItems()" :key="item.key" type="button" class="chip"
+                                    <!-- Titles in full, wrapping (several begin alike, and a person picks one out): upstream's
+                                         .chip is nowrap and cut at 14rem only for a .chip__label; these chips wrap instead.
+                                         Over a third of the window, the list scrolls inside itself. -->
+                                    <div class="flex flex-wrap gap-2 max-h-[33vh] overflow-y-auto" data-studio-context-items>
+                                        <button v-for="item in chat.contextItems()" :key="item.key" type="button" class="chip !max-w-full !whitespace-normal !items-start !rounded-lg text-left"
                                                 :class="item.excluded || item.hidden ? 'opacity-60 line-through' : ''" :disabled="item.hidden"
                                                 :data-studio-context-item="item.type"
                                                 :title="item.type === 'document' ? st('studio.chat.contextDocument') : st('studio.chat.contextVoice')"
                                                 :aria-pressed="item.excluded || item.hidden ? 'false' : 'true'" @click="chat.toggleContext(item)">
-                                            <i :class="item.type === 'document' ? 'fas fa-file-lines' : 'fas fa-comment-dots'" class="mr-1" aria-hidden="true"></i>
-                                            <span v-text="item.title"></span>
-                                            <span class="text-xs ml-1" v-text="'(' + (item.hidden ? st('studio.chat.contextHidden') : (item.excluded ? st('studio.chat.excluded') : st('studio.chat.included'))) + ')'"></span>
+                                            <i :class="item.type === 'document' ? 'fas fa-file-lines' : 'fas fa-comment-dots'" class="mr-1 shrink-0 mt-[0.3em]" aria-hidden="true"></i>
+                                            <span class="min-w-0 [overflow-wrap:anywhere]"><span v-text="item.title"></span>
+                                            <span class="text-xs ml-1 whitespace-nowrap" v-text="'(' + (item.hidden ? st('studio.chat.contextHidden') : (item.excluded ? st('studio.chat.excluded') : st('studio.chat.included'))) + ')'"></span></span>
                                         </button>
                                     </div>
                                 </template>
@@ -652,7 +655,7 @@
                                     <input type="checkbox" class="mt-1" :checked="chat.isSelected('recording', r.id)" @change="chat.toggleAttach('recording', r)">
                                     <span class="min-w-0 flex-1">
                                         <span class="block break-words" v-text="r.title"></span>
-                                        <span class="block text-xs text-[var(--text-muted)]"
+                                        <span class="block text-xs text-[var(--text-muted)] [overflow-wrap:anywhere]"
                                               v-text="r.cut ? st('studio.chat.transcriptLong', { chars: api.formatNumber(chat.attachables.max_transcript_chars || 0) }) : st('studio.chat.transcriptChars', { chars: api.formatNumber(r.chars) })"></span>
                                     </span>
                                 </label>
@@ -685,11 +688,12 @@
                                         <span v-text="chat.contextLabel()"></span>
                                     </button>
                                 </div>
-                                <div v-if="chat.selected.length" class="flex flex-wrap gap-1 mb-2">
-                                    <button v-for="a in chat.selected" :key="a.type + a.id" type="button" class="chip" @click="chat.toggleAttach(a.type, a.type === 'material' ? { id: a.id } : { id: a.id })">
-                                        <i :class="a.type === 'material' ? 'fas fa-paperclip' : 'fas fa-microphone'" class="mr-1" aria-hidden="true"></i>
-                                        <span v-text="a.name"></span>
-                                        <i class="fas fa-xmark ml-1" aria-hidden="true"></i>
+                                <!-- Attached items: names in full, wrapping, as in the context bar above. -->
+                                <div v-if="chat.selected.length" class="flex flex-wrap gap-1 mb-2 max-h-[33vh] overflow-y-auto" data-studio-attached-items>
+                                    <button v-for="a in chat.selected" :key="a.type + a.id" type="button" class="chip !max-w-full !whitespace-normal !items-start !rounded-lg text-left" @click="chat.toggleAttach(a.type, a.type === 'material' ? { id: a.id } : { id: a.id })">
+                                        <i :class="a.type === 'material' ? 'fas fa-paperclip' : 'fas fa-microphone'" class="mr-1 shrink-0 mt-[0.3em]" aria-hidden="true"></i>
+                                        <span class="min-w-0 [overflow-wrap:anywhere]" v-text="a.name"></span>
+                                        <i class="fas fa-xmark ml-1 shrink-0 mt-[0.3em]" aria-hidden="true"></i>
                                     </button>
                                 </div>
                                 <div class="flex items-end gap-2">
@@ -785,7 +789,7 @@
                                 <div class="min-w-0 flex-1">
                                     <button type="button" class="font-medium text-left text-[var(--text-accent)] hover:underline break-words"
                                             @click="docs.openDocument(item)" v-text="item.title"></button>
-                                    <p class="text-xs text-[var(--text-muted)]" v-text="docs.meta(item)"></p>
+                                    <p class="text-xs text-[var(--text-muted)] [overflow-wrap:anywhere]" v-text="docs.meta(item)"></p>
                                 </div>
                                 <!-- Below sm on a line of their own, under the title. -->
                                 <div class="flex flex-wrap gap-2 w-full sm:w-auto">
@@ -884,7 +888,7 @@
                                 <li v-for="user in peopleResults" :key="user.id" class="px-3 py-2 flex items-center gap-3">
                                     <span class="flex-1 min-w-0 break-words">
                                         <span v-text="user.username"></span>
-                                        <span v-if="user.email" class="text-xs text-[var(--text-muted)]" v-text="' · ' + user.email"></span>
+                                        <span v-if="user.email" class="text-xs text-[var(--text-muted)] [overflow-wrap:anywhere]" v-text="' · ' + user.email"></span>
                                     </span>
                                     <button type="button" class="btn btn--sm" @click="addPerson(user)" v-text="st('studio.common.add')"></button>
                                 </li>
