@@ -152,8 +152,10 @@ def test_delete_by_the_admin_is_the_owners_delete_with_the_admin_as_actor(world,
     from src.services import audit
     assert audit.flush(timeout=15)
     db.session.rollback()
-    row = AuditEvent.query.filter_by(event='recording.deleted', recording_id=people['loose']).first()
-    assert row is not None and row.actor_user_id == people['admin'] and row.recording_owner_id == people['owner']
+    # Ids are reused after a delete in SQLite: the row of this delete is the one by this administrator.
+    row = AuditEvent.query.filter_by(event='recording.deleted', recording_id=people['loose'],
+                                     actor_user_id=people['admin']).order_by(AuditEvent.id.desc()).first()
+    assert row is not None and row.recording_owner_id == people['owner']
 
 
 def test_speakers_and_public_links_stay_the_owners(world, people):
