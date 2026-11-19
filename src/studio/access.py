@@ -139,11 +139,18 @@ def owner_exists(project):
     return db.session.get(User, project.owner_id) is not None
 
 
+def acts_as_owner(project, role, user):
+    """A site administrator, with STUDIO_ADMINS_AS_OWNERS on, may do here what the owner may
+    (src/studio/admin_owner.py); the role stays ADMIN."""
+    from src.studio.admin_owner import acts_as_owner as _acts
+    return role == ADMIN and _acts(user, project.owner_id)
+
+
 def capabilities(project, role, user):
     """What the viewer may do on this project, for the routes and for the page."""
     from src.studio import admin_access
-    is_owner = role == OWNER
-    can_use_folder = role in (OWNER, MEMBER) or (role == ADMIN and admin_access.active())
+    is_owner = role == OWNER or acts_as_owner(project, role, user)
+    can_use_folder = role in (OWNER, MEMBER) or is_owner or (role == ADMIN and admin_access.active())
     return {
         'edit_details': role in (OWNER, MEMBER, ADMIN),
         'rename': is_owner,
@@ -159,4 +166,4 @@ def capabilities(project, role, user):
 
 def may_delete_item(project, role, user, created_by):
     """A material or voice reference: the person who added it, or the project's owner."""
-    return role == OWNER or (created_by is not None and created_by == user.id)
+    return role == OWNER or acts_as_owner(project, role, user) or (created_by is not None and created_by == user.id)

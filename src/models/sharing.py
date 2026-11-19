@@ -133,6 +133,9 @@ class InternalShare(db.Model):
         # Owner has unlimited permissions
         if recording.user_id == user.id:
             return {'can_edit': True, 'can_reshare': True}
+        from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+        if _studio_as_owner(user, recording):  # studio add-on: shares inside the site as the owner could
+            return {'can_edit': True, 'can_reshare': True}
 
         # Get user's share for this recording
         user_share = InternalShare.query.filter_by(

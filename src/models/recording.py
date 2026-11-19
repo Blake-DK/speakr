@@ -212,7 +212,8 @@ class Recording(db.Model):
         if user is None:
             return self.notes
 
-        if self.user_id == user.id:
+        from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+        if self.user_id == user.id or _studio_as_owner(user, self):  # studio add-on: the recording's own notes
             return self.notes  # Owner sees Recording.notes
         else:
             # Shared user sees their personal notes

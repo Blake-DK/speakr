@@ -3391,6 +3391,9 @@ def assign_speakers(recording_id):
 
         if not has_recording_access(recording, current_user, require_edit=True):
             return jsonify(api_error('permission_denied')), 403
+        from src.studio.admin_owner import refuses_speakers as _studio_refuses_speakers  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+        if _studio_refuses_speakers(current_user, recording):  # studio add-on: speaker names stay the owner's
+            return jsonify(api_error('permission_denied')), 403
 
         data = request.get_json()
         if not data or 'speaker_map' not in data:
@@ -3460,6 +3463,9 @@ def identify_speakers(recording_id):
         recording = db.session.get(Recording, recording_id)
         if not recording or not has_recording_access(recording, current_user):
             return jsonify(api_error('recording_not_found')), 404
+        from src.studio.admin_owner import refuses_speakers as _studio_refuses_speakers  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+        if _studio_refuses_speakers(current_user, recording):  # studio add-on: speaker names stay the owner's
+            return jsonify(api_error('recording_edit_denied')), 403
 
         if not recording.transcription:
             return jsonify(api_error('no_transcription_for_identification')), 400

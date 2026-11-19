@@ -73,7 +73,8 @@ def archived_condition(recording_model, user_id):
 def set_user_notes(recording, user, notes):
     """The owner writes the recording's notes; anyone else writes their own
     personal notes and never sees or changes the owner's (mailr spec Q2)."""
-    if recording.user_id == user.id:
+    from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+    if recording.user_id == user.id or _studio_as_owner(user, recording):  # studio add-on: the recording's own notes
         recording.notes = notes
         return
     state = _state(recording, user)

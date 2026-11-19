@@ -20,6 +20,14 @@ from src.studio.models import (StudioChat, StudioDocument, StudioMaterial, Studi
                                StudioVoiceReference)
 from tests.studio.support import file_part, sharing_on, world  # noqa: F401
 
+
+@pytest.fixture(autouse=True)
+def _admins_as_owners_off(monkeypatch):
+    """These tests describe an administrator without the owner's rights: STUDIO_ADMINS_AS_OWNERS off.
+    tests/studio/test_admin_owner.py covers it on."""
+    monkeypatch.setenv('STUDIO_ADMINS_AS_OWNERS', 'false')
+
+
 PDF = b'%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'
 
 

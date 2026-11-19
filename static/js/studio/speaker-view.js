@@ -20,6 +20,9 @@
 import { isGenericSpeakerLabel } from '../modules/utils/speaker-labels.js';
 
 export const SHOWN_CLASS = 'studio-placeholder-speakers';
+// While a recording an administrator opens as its owner is shown (src/studio/admin_owner.py):
+// static/css/studio/main-page.css hides what stays the owner's (folders, tags, speakers).
+export const ADMIN_AS_OWNER_CLASS = 'studio-admin-as-owner';
 
 function enabled(root) {
     return !(root && root.__STUDIO_HIDE_PLACEHOLDER_SPEAKERS === false);
@@ -39,8 +42,9 @@ export function hidesSpeakers(segments, root = globalThis) {
     return typeof only === 'string' && isGenericSpeakerLabel(only);
 }
 
-/** The transcript text as the page shows it: the same JSON without the placeholder, or the text as it is. */
-export function displayedTranscript(text, root = globalThis) {
+/** The transcript text as the page shows it: the same JSON without the placeholder, or the text as it is.
+ * `recording`, the open recording, also marks <html> while an administrator opens someone else's. */
+export function displayedTranscript(text, root = globalThis, recording = undefined) {
     let hide = false;
     let shown = text;
     if (typeof text === 'string' && text.trim().startsWith('[')) {
@@ -59,6 +63,9 @@ export function displayedTranscript(text, root = globalThis) {
         }
     }
     const doc = root && root.document;
-    if (doc && doc.documentElement) doc.documentElement.classList.toggle(SHOWN_CLASS, hide);
+    if (doc && doc.documentElement) {
+        doc.documentElement.classList.toggle(SHOWN_CLASS, hide);
+        if (recording !== undefined) doc.documentElement.classList.toggle(ADMIN_AS_OWNER_CLASS, !!(recording && recording.studio_admin_as_owner));
+    }
     return shown;
 }

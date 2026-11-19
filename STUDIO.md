@@ -216,6 +216,18 @@ Upstream files the add-on touches, each in one marked block:
   `templates/components/detail/desktop-transcription-panel.html` and
   `mobile-transcript-panel.html` (every timed transcript, not only one with
   speakers).
+- One marked line or two each, for "An administrator acts as the owner"
+  (below), every one a call into `src/studio/admin_owner.py`: `src/app.py`
+  (`has_recording_access`, `editable_recording_ids`), `src/api/recordings.py`
+  (the detail view, the audio rule, the deletes, bulk reprocess,
+  `process_chunks`, the page flags of the list and the detail, "From others",
+  the recording's own notes, the speaker refusals), `src/api/api_v1.py` (the
+  speaker refusals), `src/models/recording.py` and
+  `src/services/recording_state.py` (the recording's own notes),
+  `src/models/sharing.py` (sharing inside the site),
+  `src/services/reprocessing.py` (the owner's prompt), `src/api/folders.py`
+  (an upload into a project's folder), `templates/modals/unified-share-modal.html`
+  (no public links), and `docs/admin-guide/audit-log.md` (the studio's events).
 
 Rules:
 
@@ -387,6 +399,51 @@ or a model reads it (`src/studio/speaker_view.py`, and the same rule in
   writing them again is a person's decision), the Inquire index (Inquire is
   off here), and upstream's prompts.
 
+## An administrator acts as the owner
+
+`STUDIO_ADMINS_AS_OWNERS` (default on; `false` gives back the behaviour
+before it): a site administrator may do with every project and every
+recording, in a project or in none, what its owner can.
+`src/studio/admin_owner.py` (`acts_as_owner`) answers it; every seam calls
+it.
+
+- Projects (the studio's own code): an administrator gets every capability of
+  the owner (`access.capabilities`, `may_delete_item`, `chats.may_manage`):
+  rename, notes and hints, the People list, delete, materials, voice
+  references, images, documents, chats, adding recordings. The project keeps
+  its owner, the People list is not changed by it, and the role stays ADMIN.
+- Recordings (marked seams in upstream's files, listed in "Where it lives"):
+  open, play, download, edit (title, transcript, the recording's own notes,
+  summary), regenerate (with the owner's prompt; the job and its tokens are
+  the administrator's), reprocess, delete (the owner's path: the owner's
+  quota is freed), and share with people inside the site. An administrator
+  finds every recording that is not theirs under "From others"; the default
+  list is unchanged.
+- Stays the owner's alone, refused by the server and not offered by the page
+  (`static/css/studio/main-page.css`): public share links (they put a
+  recording in front of people outside the site), the owner's tags and
+  folders (the owner's filing; so moving a recording between folders or
+  projects too), merging, speaker names and profiles (nothing is written into
+  another person's speaker library), and the job list.
+- Stays the viewer's: star, inbox, archive and an administrator's own marks
+  (upstream keys them by viewer). Account pages are not part of it.
+- `has_recording_access` also answers for API v1, so an administrator's API
+  token reaches as far as the administrator does.
+- Audit: upstream already writes the administrator as actor and the owner for
+  changes to recordings; whatever an administrator changes in a project that
+  is not theirs writes a `studio.project.*` or `studio.item.*` row
+  (`src/studio/admin_audit.py`, documented in
+  `docs/admin-guide/audit-log.md`).
+- Said openly: the project page's notice for administrators, the People tab's
+  line, and one sentence in About.
+- `STUDIO_ADMINS_SEE_RECORDINGS` is separate: it makes every administrator a
+  member of every project's Speakr group. With this setting on that is no
+  longer needed for access.
+- Known gap: in a project without a Speakr group (never shared), a recording
+  an administrator adds is the administrator's own and its owner does not see
+  it. "<owner>'s notes" is not shown over the notes of someone else's
+  recording: that needs an upstream template edit.
+
 ## Known upstream test flakes
 
 Upstream tests that fail now and then on GitHub's runners for reasons of
@@ -398,3 +455,7 @@ further:
   `.lock`, and the test looks for the lock the moment the file is there.
   Failed on the Tests run of the `v0.11.0-studio.16` tag (1 failed, 6665
   passed; the same commit was green on `main`) and twice on `3acdb4af`.
+- `tests/test_audit_log_coverage.py::test_no_marker_reaches_a_row_or_a_fallback_line`:
+  failed once on `f4a632e7` (attempt 2), green before and after.
+- `tests/test_admin_stats_overview.py::test_recordings_by_day_source_and_failure`:
+  fails in runs after 12:00 UTC.

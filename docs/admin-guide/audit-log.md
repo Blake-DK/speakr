@@ -99,6 +99,10 @@ Rows with `imported` in the details were copied from the table `share_audit_log`
 | `admin.inquire.processed` | An administrator started the processing of recordings for Ask Ambrose on the admin page. The recordings of all accounts are processed. | `processed`, `failed`, `total`, `force` |
 | `group.created`, `group.changed`, `group.deleted` | A group was created, changed or deleted | `fields` |
 | `group.member.added`, `group.member.role_changed`, `group.member.removed` | A member was added to a group, changed in role, or removed | `role`, `old_role` |
+<!-- studio add-on (this fork only; src/studio/admin_audit.py): an administrator acting on a project that is not theirs -->
+| `studio.project.changed`, `studio.project.deleted`, `studio.project.people_changed` | An administrator changed, deleted, or changed the People list of a studio project that is not theirs; the target is the project's owner | `project_id`, `fields` |
+| `studio.item.added`, `studio.item.changed`, `studio.item.deleted` | An administrator added, changed or deleted a material, voice reference, document, image, chat or chat message in a studio project that is not theirs; the target is the owner | `project_id`, `kind`, `item_id` |
+<!-- end studio add-on -->
 | `audit.viewed`, `audit.exported` | The audit log was read (one row per 30 minutes for each administrator) or exported | `filters`, `count`, `format` |
 | `audit.pruned` | Rows past the retention period were removed | `count`, `cutoff` |
 | `audit.write_failed` | Events could not be stored (see [Failures](#failures)) | `count` |

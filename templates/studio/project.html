@@ -175,7 +175,7 @@
 
                 <div class="p-4 sm:p-6">
                     <p v-if="project.role === 'admin'" class="notice notice--info mb-4" data-studio-admin-note
-                       v-text="project.admins_see_recordings ? st('studio.project.adminNoteRecordings') : st('studio.project.adminNote')"></p>
+                       v-text="project.admins_as_owners ? st('studio.project.adminNoteOwner') : project.admins_see_recordings ? st('studio.project.adminNoteRecordings') : st('studio.project.adminNote')"></p>
                     <p v-if="project.folder_missing" class="notice notice--warn mb-4" v-text="st('studio.project.folderMissing')"></p>
                     <p v-if="flash" class="notice notice--success mb-4" role="status" v-text="flash"></p>
                     <p v-if="flashError" class="notice notice--danger mb-4" role="alert" v-text="flashError"></p>
@@ -854,8 +854,8 @@
                         <p v-if="!project.sharing_enabled" class="notice notice--warn mb-4" v-text="st('studio.project.people.sharingOff')"></p>
                         <p class="mb-4 text-sm text-[var(--text-secondary)]"
                            v-text="can.share ? st('studio.project.people.intro') : st('studio.project.people.introMember')"></p>
-                        <p v-if="project.admins_see_recordings && project.role !== 'admin'" class="mb-4 text-sm text-[var(--text-secondary)]"
-                           data-studio-admins-see v-text="st('studio.project.people.adminsSee')"></p>
+                        <p v-if="(project.admins_as_owners || project.admins_see_recordings) && project.role !== 'admin'" class="mb-4 text-sm text-[var(--text-secondary)]"
+                           data-studio-admins-see v-text="project.admins_as_owners ? st('studio.project.people.adminsChange') : st('studio.project.people.adminsSee')"></p>
                         <ul class="divide-y divide-[var(--border-primary)] mb-4" data-studio-people-list>
                             <li v-for="person in project.people.filter(p => p.role === 'owner')" :key="'o' + person.id" class="py-2 flex items-center gap-3">
                                 <i class="fas fa-user-tie text-[var(--text-muted)]" aria-hidden="true"></i>
@@ -872,7 +872,7 @@
                             </li>
                         </ul>
                         <p v-if="can.share && !peopleDraft.length && !peopleChanged && !project.admins_see_recordings"
-                           class="mb-4 text-sm text-[var(--text-muted)]" v-text="st('studio.project.people.private')"></p>
+                           class="mb-4 text-sm text-[var(--text-muted)]" v-text="project.admins_as_owners ? st('studio.project.people.privateAdminsChange') : st('studio.project.people.private')"></p>
                         <div v-if="can.share && project.sharing_enabled" class="space-y-2 max-w-xl">
                             <label class="block">
                                 <span class="block text-sm font-medium text-[var(--text-secondary)] mb-1" v-text="st('studio.project.people.addPerson')"></span>

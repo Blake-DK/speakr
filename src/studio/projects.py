@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from src.database import db
-from src.studio import access, admin_access, sharing
+from src.studio import access, admin_access, admin_owner, sharing
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +213,7 @@ def detail(project, role, user):
         'sharing_enabled': access.sharing_enabled(),
         # STUDIO_ADMINS_SEE_RECORDINGS: the site's administrators can open its recordings too.
         'admins_see_recordings': admin_access.active(),
+        'admins_as_owners': admin_owner.enabled(),
         'user_search_scope': user_lookup.search_scope(),
         'can': access.capabilities(project, role, user),
         'created_at': project.created_at.isoformat() + 'Z' if project.created_at else None,

@@ -24,3 +24,16 @@ html.studio-placeholder-speakers .asr-tl__lane .asr-tl__swatch,
 html.studio-placeholder-speakers .asr-tl__lane .asr-tl__name {
     visibility: hidden;
 }
+
+/* A recording an administrator opens as its owner (src/studio/admin_owner.py): the owner's tags and
+   folders (and so moving it), and its speaker names and profiles, stay the owner's; the server
+   refuses them, so the page does not offer them. */
+html.studio-admin-as-owner .relative:has(> [data-header-folder-toggle]),
+html.studio-admin-as-owner [data-header-more-folders],
+html.studio-admin-as-owner button:has(> i.fa-tags):not(aside *),
+html.studio-admin-as-owner button:has(> i.fa-user-tag):not(aside *),
+html.studio-admin-as-owner [data-phone-action="folder"],
+html.studio-admin-as-owner [data-phone-action="tags"],
+html.studio-admin-as-owner [data-phone-action="speakers"] {
+    display: none !important;
+}

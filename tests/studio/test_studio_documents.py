@@ -14,6 +14,14 @@ from src.studio.models import StudioChat, StudioDocument, StudioMessage, StudioP
 from tests.studio.support import folders_on, sharing_on, world  # noqa: F401
 
 
+@pytest.fixture(autouse=True)
+def _admins_as_owners_off(monkeypatch):
+    """These tests describe an administrator without the owner's rights: STUDIO_ADMINS_AS_OWNERS off.
+    tests/studio/test_admin_owner.py covers it on."""
+    monkeypatch.setenv('STUDIO_ADMINS_AS_OWNERS', 'false')
+
+
+
 class FakeProvider:
     def __init__(self):
         self.calls = []

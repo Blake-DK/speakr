@@ -90,7 +90,12 @@ def chat_for(chat_id, user):
 
 
 def may_manage(chat, role, user):
-    """Rename or delete: the chat's maker or the project's owner."""
+    """Rename or delete: the chat's maker or the project's owner (or an administrator acting as the owner)."""
+    if role == access.ADMIN:
+        from src.studio.models import StudioProject
+        project = db.session.get(StudioProject, chat.project_id)
+        if project is not None and access.acts_as_owner(project, role, user):
+            return True
     return role == access.OWNER or (chat.created_by is not None and chat.created_by == user.id)
 
 

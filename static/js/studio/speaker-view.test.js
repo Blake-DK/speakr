@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { displayedTranscript, hidesSpeakers, SHOWN_CLASS } from './speaker-view.js';
+import { ADMIN_AS_OWNER_CLASS, displayedTranscript, hidesSpeakers, SHOWN_CLASS } from './speaker-view.js';
 
 // The same cases as src/studio/speaker_view.py's tests.
 const { cases } = JSON.parse(readFileSync(new URL('../../../tests/fixtures/studio_placeholder_speaker_cases.json', import.meta.url), 'utf8'));
@@ -52,5 +52,18 @@ describe('the transcript the page shows', () => {
         expect(displayedTranscript('A plain transcript.', root)).toBe('A plain transcript.');
         const one = JSON.stringify(segments('SPEAKER_00'));
         expect(displayedTranscript(one, fakeRoot(false))).toBe(one);
+    });
+});
+
+describe('a recording an administrator opens as its owner', () => {
+    it('marks the page while it is open, and only then', () => {
+        const root = fakeRoot(true);
+        displayedTranscript('A plain transcript.', root, { studio_admin_as_owner: true });
+        expect(root.classes.has(ADMIN_AS_OWNER_CLASS)).toBe(true);
+        displayedTranscript('A plain transcript.', root, { studio_admin_as_owner: false });
+        expect(root.classes.has(ADMIN_AS_OWNER_CLASS)).toBe(false);
+        displayedTranscript('A plain transcript.', root, { studio_admin_as_owner: true });
+        displayedTranscript('', root, null);
+        expect(root.classes.has(ADMIN_AS_OWNER_CLASS)).toBe(false);
     });
 });

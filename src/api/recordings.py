@@ -613,6 +613,9 @@ def update_speakers(recording_id):
 
         if not has_recording_access(recording, current_user, require_edit=True):
             return jsonify(api_error('recording_edit_denied')), 403
+        from src.studio.admin_owner import refuses_speakers as _studio_refuses_speakers  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+        if _studio_refuses_speakers(current_user, recording):  # studio add-on: speaker names stay the owner's
+            return jsonify(api_error('recording_edit_denied')), 403
 
         data = request.json
         speaker_map = data.get('speaker_map')
@@ -739,6 +742,9 @@ def auto_identify_speakers(recording_id):
         recording = db.session.get(Recording, recording_id)
         if not recording or not has_recording_access(recording, current_user):
             return jsonify(api_error('recording_not_found')), 404
+        from src.studio.admin_owner import refuses_speakers as _studio_refuses_speakers  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+        if _studio_refuses_speakers(current_user, recording):  # studio add-on: speaker names stay the owner's
+            return jsonify(api_error('recording_edit_denied')), 403
 
         if not recording.transcription:
             return jsonify(api_error('no_transcription_for_identification')), 400
@@ -1247,6 +1253,8 @@ def get_recordings_paginated():
 
         # Get all accessible recording IDs (own + shared)
         accessible_recording_ids = get_accessible_recording_ids(current_user.id)
+        from src.studio.admin_owner import from_others as _studio_from_others  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+        accessible_recording_ids = _studio_from_others(current_user, accessible_recording_ids, show_shared)  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
 
         if not accessible_recording_ids:
             return jsonify({
@@ -1606,6 +1614,8 @@ def get_recordings_paginated():
             # Check if recording has group tags (among visible tags)
             has_group_tags = any(tag.is_group_tag for tag in batch.visible_tags(recording))
             rec_dict['has_group_tags'] = has_group_tags
+            from src.studio.admin_owner import page_flags as _studio_page_flags  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+            _studio_page_flags(rec_dict, recording, current_user, owner=batch.owners.get(recording.user_id))  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
 
             enriched_recordings.append(rec_dict)
 
@@ -1650,7 +1660,8 @@ def save_metadata():
 
         # Handle notes separately - no edit permission required (user-specific)
         if 'notes' in data:
-            if recording.user_id == current_user.id:
+            from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+            if recording.user_id == current_user.id or _studio_as_owner(current_user, recording):  # studio add-on: the recording's own notes
                 # Owner saves to Recording.notes
                 # Stored as written: notes and summaries are Markdown, and the
                 # HTML cleaner would turn "> quote" into "&gt; quote". They are
@@ -1981,7 +1992,8 @@ def delete_recording_audio(recording_id):
         recording = db.session.get(Recording, recording_id)
         if not recording or not has_recording_access(recording, current_user):
             return jsonify(api_error('recording_not_found')), 404
-        if recording.user_id != current_user.id:  # a recording without an owner is nobody's (#581)
+        from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+        if recording.user_id != current_user.id and not _studio_as_owner(current_user, recording):  # a recording without an owner is nobody's (#581)
             return jsonify(api_error('recording_delete_denied')), 403
         if not _self.USERS_CAN_DELETE and not current_user.is_admin:
             return jsonify(api_error('recording_delete_admin_only')), 403
@@ -2631,7 +2643,8 @@ def delete_recording(recording_id):
             return jsonify(api_error('recording_not_found')), 404
 
         # Check if the recording belongs to the current user
-        if recording.user_id != current_user.id:  # a recording without an owner is nobody's (#581)
+        from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+        if recording.user_id != current_user.id and not _studio_as_owner(current_user, recording):  # a recording without an owner is nobody's (#581)
             return jsonify(api_error('recording_delete_denied')), 403
 
         # Check deletion permissions (admin-only if USERS_CAN_DELETE is false)
@@ -2735,6 +2748,8 @@ def get_recording_detail(recording_id):
 
         # Check ownership or shared access
         has_access = recording.user_id == current_user.id
+        from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+        has_access = has_access or _studio_as_owner(current_user, recording)  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
 
         # Check if recording has been shared with current user (if internal sharing is enabled)
         if not has_access and _self.ENABLE_INTERNAL_SHARING:
@@ -2797,6 +2812,8 @@ def get_recording_detail(recording_id):
         visible_tags = recording.get_visible_tags(current_user)
         has_group_tags = any(tag.is_group_tag for tag in visible_tags) if visible_tags else False
         rec_dict['has_group_tags'] = has_group_tags
+        from src.studio.admin_owner import page_flags as _studio_page_flags  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+        _studio_page_flags(rec_dict, recording, current_user)  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
 
         # Enrich with per-user status
         enrich_recording_dict_with_user_status(rec_dict, recording, current_user)
@@ -3190,6 +3207,8 @@ def _playable_recording(recording_id):
 
     # Check if the recording belongs to the current user or has been shared with them
     has_access = recording.user_id == current_user.id
+    from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+    has_access = has_access or _studio_as_owner(current_user, recording)  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
 
     # Check if recording has been shared with current user (if internal sharing is enabled)
     if not has_access and _self.ENABLE_INTERNAL_SHARING:
@@ -3688,7 +3707,8 @@ def bulk_delete_recordings():
                     continue
 
                 # Check ownership
-                if recording.user_id != current_user.id:  # a recording without an owner is nobody's (#581)
+                from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+                if recording.user_id != current_user.id and not _studio_as_owner(current_user, recording):  # a recording without an owner is nobody's (#581)
                     errors.append(f"No permission for recording {recording_id}")
                     continue
 
@@ -3858,7 +3878,8 @@ def bulk_reprocess():
                     continue
 
                 # Check ownership
-                if recording.user_id != current_user.id:
+                from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+                if recording.user_id != current_user.id and not _studio_as_owner(current_user, recording):
                     continue
 
                 # Only reprocess completed or failed recordings
@@ -4002,7 +4023,8 @@ def process_recording_chunks_endpoint(recording_id):
         if not recording or not has_recording_access(recording, current_user):
             return jsonify(api_error('recording_not_found')), 404
 
-        if recording.user_id != current_user.id:
+        from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+        if recording.user_id != current_user.id and not _studio_as_owner(current_user, recording):
             return jsonify(api_error('permission_denied')), 403
 
         success = process_recording_chunks(recording_id)

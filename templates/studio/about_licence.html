@@ -6,3 +6,6 @@
     {{ studio_message('studio.brand.licence', name=studio_app_name) }}
     <a href="{{ studio_source_link }}" target="_blank" rel="noopener noreferrer" class="text-[var(--text-accent)] hover:underline" data-studio-source-link>{{ studio_t('studio.brand.sourceOfThisVersion') }}</a>.
 </div>
+{%- if studio_admins_as_owners %}
+<p class="text-sm text-[var(--text-secondary)]" data-studio-admins-note>{{ studio_t('studio.brand.admins') }}</p>
+{%- endif %}

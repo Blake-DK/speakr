@@ -2370,12 +2370,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             // =========================================================================
 
             const displayTranscription = computed(() => {
-                if (!selectedRecording.value) return '';
+                if (!selectedRecording.value) return studioDisplayedTranscript('', globalThis, null);  // studio add-on: no recording open
                 // studio add-on: the shown copy has no placeholder speaker; the stored one is untouched
                 if (viewingTranslation.value) {
-                    return studioDisplayedTranscript(selectedRecording.value.transcription_translation || '');
+                    return studioDisplayedTranscript(selectedRecording.value.transcription_translation || '', globalThis, selectedRecording.value);
                 }
-                return studioDisplayedTranscript(selectedRecording.value.transcription || '');
+                return studioDisplayedTranscript(selectedRecording.value.transcription || '', globalThis, selectedRecording.value);
             });
 
             const translationJob = computed(() => {

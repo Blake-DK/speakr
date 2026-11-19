@@ -10,7 +10,7 @@ from flask import Blueprint, abort, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from src.database import db
-from src.studio import access, admin_access, landing, materials, projects, sharing, speaker_view, voice
+from src.studio import access, admin_access, admin_owner, landing, materials, projects, sharing, speaker_view, voice
 from src.studio.i18n import studio_message, studio_strings, studio_strings_for, studio_t, user_language
 
 from src.studio.brand import DEFAULT_SOURCE_URL, app_name, release, source_link, source_url  # noqa: F401
@@ -45,6 +45,11 @@ landing.register(studio_bp)
 # (src/studio/admin_access.py; does nothing while the setting is off).
 admin_access.register(studio_bp)
 
+# An audit row for whatever an administrator changes in a project that is not theirs
+# (src/studio/admin_audit.py).
+from src.studio import admin_audit  # noqa: E402
+admin_audit.register(studio_bp)
+
 
 @studio_bp.app_context_processor
 def inject_studio_helpers():
@@ -55,6 +60,7 @@ def inject_studio_helpers():
     return {'studio_t': studio_t, 'studio_message': studio_message, 'studio_strings_for': studio_strings_for,
             'studio_app_name': app_name(), 'studio_release': release(), 'studio_source_link': source_link(),
             'studio_hide_placeholder_speakers': speaker_view.enabled(),
+            'studio_admins_as_owners': admin_owner.enabled(),
             'studio_hide_needs_speakers': lambda: speaker_view.hide_needs_speakers(
                 current_user.id if current_user.is_authenticated else None)}
 

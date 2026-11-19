@@ -118,7 +118,8 @@ def caller_summary_prompt(recording, user, custom_prompt, append):
     passed as the prompt that runs. A prompt the caller sends to replace the
     resolved one is used unchanged.
     """
-    if user is None or recording.user_id is None or recording.user_id == user.id:
+    from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+    if user is None or recording.user_id is None or recording.user_id == user.id or _studio_as_owner(user, recording):  # studio add-on: the owner's prompt
         return custom_prompt, append
     if custom_prompt and not append:
         return custom_prompt, append

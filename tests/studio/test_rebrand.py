@@ -224,7 +224,8 @@ def test_the_licence_line(monkeypatch):
     html = _render('studio/about_licence.html')
     text = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', html.split('#}')[-1])).strip()
     assert text == ('ScriptBot is built on Speakr, free software under the GNU Affero General Public License v3. '
-                    'Source code of this version .')
+                    'Source code of this version .'
+                    ' The administrators of this site can open and change every project and recording.')
     links = re.findall(r'href="([^"]+)"', html)
     assert links == ['https://github.com/Blake-DK/speakr/tree/v0.11.0-studio.16']
 

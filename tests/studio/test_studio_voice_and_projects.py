@@ -9,6 +9,14 @@ from src.studio import schema, voice
 from src.studio.models import StudioProject, StudioVoiceReference
 from tests.studio.support import sharing_on, world  # noqa: F401
 
+
+@pytest.fixture(autouse=True)
+def _admins_as_owners_off(monkeypatch):
+    """These tests describe an administrator without the owner's rights: STUDIO_ADMINS_AS_OWNERS off.
+    tests/studio/test_admin_owner.py covers it on."""
+    monkeypatch.setenv('STUDIO_ADMINS_AS_OWNERS', 'false')
+
+
 SRT = """1
 00:00:01,000 --> 00:00:03,000
 <i>One night.</i>

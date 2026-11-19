@@ -213,6 +213,9 @@ def has_recording_access(recording, user, require_edit=False, require_reshare=Fa
     # Owner always has full access
     if recording.user_id == user.id:
         return True
+    from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+    if _studio_as_owner(user, recording):  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+        return True
 
     # If internal sharing is not enabled, only owner has access
     if not _self.ENABLE_INTERNAL_SHARING:
@@ -266,6 +269,8 @@ def editable_recording_ids(recordings, user, share_map):
     the group-admin rule instead of one per row (D#483).
     """
     editable = {r.id for r in recordings if r.user_id == user.id}
+    from src.studio.admin_owner import on_recording as _studio_as_owner  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+    editable |= {r.id for r in recordings if _studio_as_owner(user, r)}  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
     if not _self.ENABLE_INTERNAL_SHARING:
         return editable
     needs_admin = []

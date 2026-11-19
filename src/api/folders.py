@@ -795,6 +795,9 @@ def folder_assign_error(recording, folder, user, denied_key):
         if recording.user_id != user.id and membership.role != 'admin':
             return 'folder_assign_restricted'
         return None
+    from src.studio.admin_owner import acts_as_owner as _studio_acts, project_folder_of as _studio_project_of  # studio add-on: an administrator acts as the owner (src/studio/admin_owner.py)
+    if _studio_acts(user, folder.user_id) and recording.user_id == user.id and _studio_project_of(folder) is not None:  # studio add-on: an upload into a project's folder
+        return None
     if folder.user_id != user.id:
         return denied_key
     if recording.user_id != user.id:
