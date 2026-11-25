@@ -168,6 +168,48 @@
                     return st('studio.project.recordings.failed', { name: item.name, error: item.error });
                 }
 
+                // A Teams transcript (.vtt) replaces a recording's transcript: real speaker names
+                // (static/js/studio/teams-transcript.js), saved through Speakr's own transcript route,
+                // which also rebuilds the summary.
+                const teamsInput = ref(null);
+                let teamsTarget = null;
+
+                function pickTeamsTranscript(rec) {
+                    teamsTarget = rec;
+                    if (teamsInput.value) teamsInput.value.click();
+                }
+
+                async function onTeamsFile(event) {
+                    const file = event.target.files && event.target.files[0];
+                    event.target.value = '';
+                    const rec = teamsTarget;
+                    teamsTarget = null;
+                    if (!file || !rec) return;
+                    const segments = window.studioTeamsTranscript.parseTeamsVtt(await file.text());
+                    if (!segments.length) {
+                        say(st('studio.project.recordings.teamsNotTeams', { name: file.name }), true);
+                        return;
+                    }
+                    const title = rec.title || ('#' + rec.id);
+                    const speakers = new Set(segments.map(s => s.speaker)).size;
+                    const ok = await window.confirmDialog({
+                        title: st('studio.project.recordings.teamsConfirmTitle'),
+                        message: st('studio.project.recordings.teamsConfirm', { title, speakers, lines: segments.length }),
+                        confirmLabel: st('studio.project.recordings.teamsReplace'),
+                        cancelLabel: st('studio.common.cancel'),
+                        danger: true,
+                    });
+                    if (!ok) return;
+                    const res = await api.request('POST', `/recording/${rec.id}/update_transcript`,
+                        { transcript_data: segments, speaker_map: {}, regenerate_summary: true });
+                    if (!res.ok) {
+                        say(errorOf(res), true);
+                        return;
+                    }
+                    say(st('studio.project.recordings.teamsDone', { title, speakers }));
+                    loadRecordings();
+                }
+
                 function pickRecordings() {
                     if (recordingInput.value) recordingInput.value.click();
                 }
@@ -614,6 +656,7 @@
                     recordings, hiddenRecordings, hiddenRecordingsLine,
                     uploads, recordingInput, recordingDrag, statusLabel, statusClass, uploadLine,
                     pickRecordings, onRecordingFiles, onRecordingDrop,
+                    teamsInput, pickTeamsTranscript, onTeamsFile,
                     materials, materialInput, materialDrag, materialUploading, materialRefused, openText,
                     pickMaterials, onMaterialFiles, onMaterialDrop, materialUrl, materialIcon, materialMeta,
                     toggleMaterialText, deleteMaterial,

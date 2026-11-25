@@ -97,7 +97,7 @@ def test_every_file_chooser_is_hidden_with_important():
     """UI themes (cards, focus, workspace) give every input in the page
     display:block; only an !important display:none keeps a chooser hidden."""
     choosers = [attrs for tag, attrs in _project_page_tags() if tag == 'input' and attrs.get('type') == 'file']
-    assert len(choosers) == 3
+    assert len(choosers) == 4  # recordings, Teams transcript, materials, voice
     for attrs in choosers:
         classes = (attrs.get('class') or '').split()
         assert '!hidden' in classes and 'hidden' not in classes, attrs

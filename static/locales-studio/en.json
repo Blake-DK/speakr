@@ -108,7 +108,14 @@
           "COMPLETED": "Ready",
           "FAILED": "Failed"
         },
-        "discuss": "Discuss in chat"
+        "discuss": "Discuss in chat",
+        "teamsImport": "Teams transcript",
+        "teamsHint": "Replace the transcript with the one Teams made (Download as .vtt), with everyone's names",
+        "teamsNotTeams": "{{name}} is not a Teams transcript: no speaker names in it. In Teams, download the transcript as .vtt.",
+        "teamsConfirmTitle": "Replace the transcript?",
+        "teamsConfirm": "The transcript of “{{title}}” is replaced by the Teams transcript ({{lines}} lines, {{speakers}} speakers), and the summary is written again.",
+        "teamsReplace": "Replace",
+        "teamsDone": "“{{title}}” now has the Teams transcript with {{speakers}} speakers. The summary is being written again."
       },
       "materials": {
         "add": "Add materials",

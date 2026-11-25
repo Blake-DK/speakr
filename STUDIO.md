@@ -62,6 +62,13 @@ site running this code can get its source.
   Recordings added on the project page go into it through Speakr's own upload
   route, so Speakr's queue transcribes them. The project's transcription
   hints are the folder's hotwords and initial prompt.
+- "Teams transcript" on a finished or failed recording (for whoever may edit it)
+  replaces its transcript with a Teams meeting transcript downloaded as
+  .vtt, with each speaker's name (`static/js/studio/teams-transcript.js`).
+  It is saved through Speakr's own transcript route
+  (`/recording/<id>/update_transcript`), which also writes the summary again.
+  The transcriber cannot tell voices apart, so this is how a Teams meeting
+  gets real speakers.
 - Sharing a project creates a Speakr group for it (the owner as group admin,
   each person added as a member) and makes the folder that group's folder,
   so Speakr shares the folder's recordings with the group itself. This needs

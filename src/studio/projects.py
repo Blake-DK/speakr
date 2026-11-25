@@ -252,6 +252,7 @@ def hidden_summary(hidden):
 
 
 def recording_list(project, user, rows=None):
+    from src.app import has_recording_access
     from src.models import User
     rows = visible_recordings(project, user) if rows is None else rows
     owners = {u.id: u.username for u in User.query.filter(User.id.in_({r.user_id for r in rows if r.user_id})).all()}
@@ -265,6 +266,7 @@ def recording_list(project, user, rows=None):
         'owner_name': owners.get(r.user_id),
         'is_mine': r.user_id == user.id,
         'is_archived': bool(r.is_archived),
+        'can_edit': has_recording_access(r, user, require_edit=True),  # may replace the transcript (a Teams import)
         'url': f'/recordings/{r.id}',
     } for r in rows]
 

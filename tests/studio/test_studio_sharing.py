@@ -84,6 +84,14 @@ def test_a_recording_added_later_is_shared_by_speakr_itself(shared):
     assert set(ids) == {shared['before'], later}
 
 
+def test_only_who_may_edit_a_recording_is_offered_its_transcript_import(shared):
+    world = shared['world']
+    url = f"/api/studio/projects/{shared['project']}/recordings"
+    can_edit = lambda user: {r['id']: r['can_edit'] for r in world.client(user).get(url).get_json()['items']}
+    assert can_edit(shared['owner'])[shared['before']] is True
+    assert can_edit(shared['member'])[shared['before']] is False  # shared read-only
+
+
 def test_a_member_upload_goes_into_the_group_folder(shared):
     from src.services.recording_ingestion import select_tags_and_folder
     member = db.session.get(User, shared['member'])

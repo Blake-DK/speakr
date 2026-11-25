@@ -267,7 +267,7 @@
                             </button>
                             <p class="mt-2 text-xs text-[var(--text-muted)]" v-text="st('studio.project.recordings.addHint')"></p>
                             <p class="text-xs text-[var(--text-muted)] hidden sm:block" v-text="st('studio.project.recordings.dropHere')"></p>
-                            <!-- !hidden on the three file choosers: the UI themes cards, focus and workspace
+                            <!-- !hidden on the file choosers: the UI themes cards, focus and workspace
                                  give every input of the page display:block. -->
                             <input ref="recordingInput" type="file" class="!hidden" accept="audio/*,video/*" multiple
                                    @change="onRecordingFiles">
@@ -294,6 +294,11 @@
                                     <i class="fas fa-comments" aria-hidden="true"></i>
                                     <span v-text="st('studio.project.recordings.discuss')"></span>
                                 </button>
+                                <button v-if="(rec.status === 'COMPLETED' || rec.status === 'FAILED') && rec.can_edit" type="button" class="btn btn--sm" data-studio-teams-import
+                                        :title="st('studio.project.recordings.teamsHint')" @click="pickTeamsTranscript(rec)">
+                                    <i class="fas fa-users" aria-hidden="true"></i>
+                                    <span v-text="st('studio.project.recordings.teamsImport')"></span>
+                                </button>
                                 <span class="w-full text-xs text-[var(--text-muted)]">
                                     <span v-text="api.formatDate(rec.meeting_date || rec.created_at)"></span>
                                     <span v-if="rec.duration_seconds" v-text="' · ' + api.formatDuration(rec.duration_seconds)"></span>
@@ -301,6 +306,7 @@
                                 </span>
                             </li>
                         </ul>
+                        <input ref="teamsInput" type="file" class="!hidden" accept=".vtt,text/vtt" @change="onTeamsFile">
                         <p v-if="project.folder_name" class="mt-4 text-xs text-[var(--text-muted)]"
                            v-text="st('studio.project.recordings.folderHint', { folder: project.folder_name })"></p>
                     </section>
@@ -919,6 +925,7 @@
     <script src="{{ url_for('static', filename='js/markdown-safe.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='js/studio/chat.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='js/studio/documents.js', v=app_version) }}"></script>
+    <script src="{{ url_for('static', filename='js/studio/teams-transcript.js', v=app_version) }}"></script>
     <script src="{{ url_for('static', filename='js/studio/project.js', v=app_version) }}"></script>
 </body>
 </html>
