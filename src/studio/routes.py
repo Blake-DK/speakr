@@ -10,6 +10,7 @@ from flask import Blueprint, abort, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from src.database import db
+from src.utils.token_auth import require_scope
 from src.studio import access, admin_access, admin_owner, landing, materials, projects, sharing, speaker_view, voice
 from src.studio.i18n import studio_message, studio_strings, studio_strings_for, studio_t, user_language
 
@@ -111,6 +112,7 @@ def health():
 # --- projects ---------------------------------------------------------------
 
 @studio_bp.route('/api/studio/projects', methods=['GET'])
+@require_scope('read')
 @login_required
 def list_projects():
     """The projects the person may see, the most recently opened first."""
@@ -138,6 +140,7 @@ def create_project():
 
 
 @studio_bp.route('/api/studio/projects/<int:project_id>', methods=['GET'])
+@require_scope('read')
 @login_required
 def get_project(project_id):
     project, role = access.project_for(project_id, current_user)
@@ -179,6 +182,7 @@ def delete_project(project_id):
 
 
 @studio_bp.route('/api/studio/projects/<int:project_id>/recordings', methods=['GET'])
+@require_scope('read')
 @login_required
 def project_recordings(project_id):
     project, _role = access.project_for(project_id, current_user)

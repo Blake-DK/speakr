@@ -13,6 +13,13 @@ The upstream files it does touch, each in one marked block:
   the studio's scripts on Speakr's main page.
 """
 
-from src.studio.routes import studio_bp
-
 __all__ = ['studio_bp']
+
+
+def __getattr__(name):
+    # Loaded on first use, not on import: src.models imports src.studio.models,
+    # and the routes import src.utils.token_auth, which imports src.models.
+    if name == 'studio_bp':
+        from src.studio.routes import studio_bp
+        return studio_bp
+    raise AttributeError(f"module 'src.studio' has no attribute {name!r}")
